@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#140c1c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="description" content="Hat Trick Moto — a side-scrolling pixel motocross racer with online multiplayer and stackable hats.">
+<title>Hat Trick Moto</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  :root { --ink:#140c1c; --paper:#f4f2e8; --hot:#ff8a2a; --sun:#ffd23f; --sky:#6fe3ff; --leaf:#46c84a; --rose:#e8383b; }
+  html, body { margin:0; height:100%; background:var(--ink); overflow:hidden; touch-action:none;
+    -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
+  #game { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    image-rendering:pixelated; image-rendering:crisp-edges; }
+  #ui { position:absolute; inset:0; pointer-events:none; color:var(--paper);
+    font-family:'Press Start 2P', ui-monospace, 'Courier New', monospace; font-size:11px; line-height:1.6; }
+  .screen { position:absolute; inset:0; display:none; align-items:center; justify-content:center;
+    pointer-events:auto; padding:10px; box-sizing:border-box; }
+  .screen.on { display:flex; }
+  .screen.dim { background:rgba(20,12,28,.55); }
+  .panel { background:rgba(20,12,28,.94); border:4px solid var(--paper); box-shadow:0 0 0 4px var(--ink), 8px 8px 0 4px rgba(0,0,0,.45);
+    padding:16px; width:100%; max-width:720px; max-height:100%; overflow:auto; box-sizing:border-box; touch-action:pan-y; -webkit-overflow-scrolling:touch; }
+  .panel.narrow { max-width:440px; }
+  h1, h2, h3 { margin:0 0 12px; font-weight:normal; }
+  h2 { font-size:16px; color:var(--sun); text-shadow:2px 2px 0 #9a1e24; }
+  h3 { font-size:11px; color:var(--sky); margin:10px 0 8px; }
+  p { margin:0 0 10px; }
+  .logo { font-size:clamp(20px, 5.4vw, 42px); line-height:1.15; text-align:center; letter-spacing:2px; margin:4px 0 10px; }
+  .logo span { display:inline-block; text-shadow:3px 3px 0 var(--ink), 6px 6px 0 #9a1e24; }
+  .logo span:nth-child(1) { color:var(--sun); transform:rotate(-4deg); }
+  .logo span:nth-child(2) { color:var(--hot); }
+  .logo span:nth-child(3) { color:var(--sky); transform:rotate(3deg); }
+  .tag { text-align:center; color:#c8c8d0; font-size:9px; margin-bottom:14px; }
+  .menu { display:grid; gap:8px; max-width:340px; margin:0 auto; }
+  button, select, input[type=text], textarea { font:inherit; color:var(--ink); }
+  button { background:var(--paper); border:0; padding:11px 12px; cursor:pointer; box-shadow:inset -3px -3px 0 #8a8a9a, 0 0 0 3px var(--ink);
+    font-size:11px; text-transform:uppercase; touch-action:manipulation; }
+  button:hover { background:#fff7c8; }
+  button:active { box-shadow:inset 3px 3px 0 #8a8a9a, 0 0 0 3px var(--ink); }
+  button.go { background:var(--sun); } button.go:hover { background:#ffe680; }
+  button.warn { background:#ff9a9a; }
+  button.mini { padding:7px 8px; font-size:9px; }
+  button:disabled { opacity:.45; cursor:default; }
+  button.sel { background:var(--sky); }
+  input[type=text], select, textarea { background:var(--paper); border:0; padding:9px; box-shadow:0 0 0 3px var(--ink), inset 3px 3px 0 #c8c8d0; font-size:11px; }
+  input[type=text] { width:100%; box-sizing:border-box; text-transform:none; }
+  textarea { width:100%; box-sizing:border-box; font-size:9px; height:70px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:8px 0; }
+  .row.end { justify-content:flex-end; } .row.center { justify-content:center; }
+  .small { font-size:9px; color:#c8c8d0; }
+  .grow { flex:1; }
+  .cols { display:flex; gap:14px; flex-wrap:wrap; }
+  .cols > * { flex:1; min-width:220px; }
+  .swatches { display:flex; gap:6px; flex-wrap:wrap; }
+  .swatch { width:26px; height:26px; padding:0; box-shadow:0 0 0 3px var(--ink); }
+  .swatch.sel { box-shadow:0 0 0 3px var(--paper), 0 0 0 6px var(--ink); }
+  .hatgrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(52px, 1fr)); gap:6px; }
+  .hatbtn { padding:4px; display:flex; flex-direction:column; align-items:center; gap:2px; font-size:6px; line-height:1.2; text-transform:none; }
+  .hatbtn canvas { width:40px; height:40px; image-rendering:pixelated; }
+  .hatbtn.on { background:var(--sun); }
+  .stack { display:flex; flex-direction:column-reverse; gap:4px; min-height:40px; }
+  .stackitem { display:flex; align-items:center; gap:6px; background:#2a2140; padding:4px 6px; font-size:8px; }
+  .stackitem canvas { width:28px; height:28px; image-rendering:pixelated; }
+  .stackitem .grow { color:var(--paper); }
+  .stackitem button { padding:4px 6px; font-size:8px; }
+  #wr-preview { width:144px; height:216px; image-rendering:pixelated; background:linear-gradient(#62c3f0 0 70%, #b8743c 70% 100%); box-shadow:0 0 0 3px var(--ink); display:block; margin:0 auto; }
+  .tracklist { display:grid; gap:6px; }
+  .tracklist button { text-align:left; display:flex; justify-content:space-between; gap:8px; }
+  .players { display:grid; gap:6px; margin:6px 0 10px; }
+  .pl { display:flex; align-items:center; gap:8px; background:#2a2140; padding:6px 8px; min-height:34px; }
+  .pl .dot { width:16px; height:16px; box-shadow:0 0 0 2px var(--ink); flex:none; }
+  .pl canvas { height:28px; image-rendering:pixelated; }
+  .pl .name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pl .tagr { font-size:8px; padding:4px 6px; background:#444; }
+  .pl .tagr.ready { background:var(--leaf); color:var(--ink); }
+  .code { font-size:28px; color:var(--sun); letter-spacing:6px; text-shadow:3px 3px 0 #9a1e24; }
+  .linkbox { font-size:8px; word-break:break-all; color:var(--sky); background:#2a2140; padding:6px; flex:1; min-width:160px; user-select:text; -webkit-user-select:text; }
+  table.res { width:100%; border-collapse:collapse; font-size:10px; }
+  table.res td { padding:6px 4px; border-bottom:2px solid #2a2140; }
+  table.res td:first-child { color:var(--sun); width:40px; }
+  table.res td.t { text-align:right; color:var(--sky); }
+  .keys td { padding:4px 8px 4px 0; vertical-align:top; font-size:9px; }
+  .keys td:first-child { color:var(--sun); white-space:nowrap; }
+  .status { min-height:16px; color:var(--hot); font-size:9px; }
+
+  /* touch controls */
+  #touch { position:absolute; inset:0; display:none; pointer-events:none; }
+  #touch.on { display:block; }
+  .tb { position:absolute; pointer-events:auto; background:rgba(244,242,232,.20); border:3px solid rgba(244,242,232,.65);
+    border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:10px; color:rgba(255,255,255,.9);
+    touch-action:none; box-sizing:border-box; }
+  .tb.down { background:rgba(255,210,63,.55); }
+  .tb svg { width:46%; height:46%; fill:rgba(255,255,255,.92); }
+  #tb-up    { left:calc(14px + 64px); bottom:calc(14px + 128px); width:62px; height:62px; }
+  #tb-dn    { left:calc(14px + 64px); bottom:14px; width:62px; height:62px; }
+  #tb-lb    { left:14px; bottom:calc(14px + 64px); width:62px; height:62px; }
+  #tb-lf    { left:calc(14px + 128px); bottom:calc(14px + 64px); width:62px; height:62px; }
+  #tb-tur   { right:calc(14px + 104px); bottom:22px; width:94px; height:94px; border-radius:50%; background:rgba(232,56,59,.30); }
+  #tb-thr   { right:14px; bottom:84px; width:94px; height:94px; border-radius:50%; background:rgba(70,200,74,.30); }
+  #tb-menu  { left:12px; top:30px; width:44px; height:34px; border-radius:8px; font-size:9px; }
+  @media (max-height:360px) { .tb { transform:scale(.82); transform-origin:bottom left; } #tb-tur, #tb-thr { transform-origin:bottom right; } #tb-menu { transform-origin:top left; } }
+  @media (max-height:520px) {
+    .panel { padding:10px; }
+    .logo { font-size:clamp(18px, 4vw, 30px); margin:0 0 4px; }
+    .tag { margin-bottom:8px; }
+    .menu { gap:6px; }
+    .menu button { padding:8px 10px; }
+    h2 { margin-bottom:6px; } h3 { margin:6px 0 4px; }
+    #wr-preview { width:96px; height:144px; }
+  }
+
+  #toast { position:absolute; left:50%; top:16%; transform:translateX(-50%); background:var(--ink); border:3px solid var(--paper);
+    padding:8px 12px; font-size:10px; display:none; pointer-events:none; white-space:nowrap; z-index:5; }
+  #rotate { position:absolute; inset:0; background:var(--ink); display:none; align-items:center; justify-content:center; text-align:center;
+    padding:30px; font-size:12px; line-height:2; pointer-events:auto; z-index:9; }
+  @media (orientation:portrait) and (pointer:coarse) { body.racing #rotate { display:flex; } }
+
+  /* editor */
+  #editor-ui { position:absolute; inset:0; display:none; pointer-events:none; }
+  #editor-ui.on { display:block; }
+  .ed-bar { position:absolute; left:0; right:0; display:flex; gap:5px; flex-wrap:wrap; align-items:center; padding:5px; pointer-events:auto;
+    background:rgba(20,12,28,.9); box-sizing:border-box; }
+  .ed-bar.top { top:0; } .ed-bar.bot { bottom:0; }
+  .ed-bar button { padding:7px 7px; font-size:8px; }
+  .ed-bar input[type=text] { width:150px; padding:6px; font-size:9px; }
+  .ed-bar input[type=range] { flex:1; min-width:120px; }
+  .ed-bar .lbl { font-size:8px; color:#c8c8d0; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="ui">
+  <!-- TITLE -->
+  <section class="screen" id="scr-title">
+    <div class="panel narrow">
+      <h1 class="logo"><span>HAT</span> <span>TRICK</span> <span>MOTO</span></h1>
+      <p class="tag">Stack hats. Hit jumps. Don't overheat.</p>
+      <div class="menu">
+        <button class="go" data-go="solo">Solo Practice</button>
+        <button data-go="host">Host Online Race</button>
+        <button data-go="join">Join Online Race</button>
+        <button data-go="wardrobe">Hat Wardrobe</button>
+        <button data-go="editor">Track Editor</button>
+      </div>
+      <div class="row center small" style="margin-top:12px">
+        <span id="title-rider"></span>
+      </div>
+      <div class="row center">
+        <button class="mini" id="btn-help">How to play</button>
+        <button class="mini" id="btn-mute">Sound: On</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- HELP -->
+  <section class="screen dim" id="scr-help">
+    <div class="panel narrow">
+      <h2>How to Play</h2>
+      <table class="keys">
+        <tr><td>Z</td><td>Throttle</td></tr>
+        <tr><td>X</td><td>Turbo — faster, but heats the engine</td></tr>
+        <tr><td>Up / Down</td><td>Change lanes (on the ground)</td></tr>
+        <tr><td>Left</td><td>Lean back (wheelie / nose up in the air)</td></tr>
+        <tr><td>Right</td><td>Lean forward (nose down in the air)</td></tr>
+        <tr><td>Esc</td><td>Pause / menu</td></tr>
+      </table>
+      <p class="small">Land with your bike matching the slope of the ground for a clean landing and a speed boost. Land badly and you tumble. If the TEMP gauge fills up, your engine overheats and stalls for 3 seconds — ride over the blue cooling strips to reset it. Mud slows you down, hay bales and barriers knock you off, and bumping into another rider's back wheel sends you flying.</p>
+      <p class="small">On phones: hold your phone sideways. Left side = lanes and leaning, right side = GAS and TURBO.</p>
+      <div class="row end"><button class="go" data-go="title">Got it</button></div>
+    </div>
+  </section>
+
+  <!-- WARDROBE -->
+  <section class="screen dim" id="scr-wardrobe">
+    <div class="panel">
+      <h2>Hat Wardrobe</h2>
+      <div class="cols">
+        <div style="max-width:240px">
+          <canvas id="wr-preview" width="48" height="72"></canvas>
+          <h3>Rider name</h3>
+          <input type="text" id="wr-name" maxlength="12" autocomplete="off" spellcheck="false">
+          <h3>Bike color</h3>
+          <div class="swatches" id="wr-colors"></div>
+          <h3>Your stack <span class="small" id="wr-count"></span></h3>
+          <div class="stack" id="wr-stack"></div>
+        </div>
+        <div>
+          <h3>Pick up to 5 hats — tap to stack</h3>
+          <div class="hatgrid" id="wr-hats"></div>
+          <div class="row">
+            <button id="wr-random">Randomize</button>
+            <button id="wr-clear">Clear</button>
+            <span class="grow"></span>
+            <button class="go" id="wr-done">Done</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SOLO SETUP -->
+  <section class="screen dim" id="scr-solo">
+    <div class="panel narrow">
+      <h2>Solo Practice</h2>
+      <p class="small">Race 3 computer riders.</p>
+      <h3>Track</h3>
+      <div class="tracklist" id="solo-tracks"></div>
+      <h3>Laps</h3>
+      <div class="row" id="solo-laps"></div>
+      <div class="row end">
+        <button data-go="title">Back</button>
+        <button class="go" id="solo-start">Race!</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- JOIN -->
+  <section class="screen dim" id="scr-join">
+    <div class="panel narrow">
+      <h2>Join a Race</h2>
+      <p class="small">Ask the host for their 4-letter room code.</p>
+      <h3>Room code</h3>
+      <input type="text" id="join-code" maxlength="4" autocomplete="off" spellcheck="false" style="text-transform:uppercase;font-size:22px;letter-spacing:8px;text-align:center">
+      <div class="row small"><span class="grow" id="join-rider"></span><button class="mini" id="join-wardrobe">Change rider</button></div>
+      <div class="status" id="join-status"></div>
+      <div class="row end">
+        <button data-go="title">Back</button>
+        <button class="go" id="join-btn">Join</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- LOBBY -->
+  <section class="screen dim" id="scr-lobby">
+    <div class="panel">
+      <div class="row" style="margin-top:0">
+        <h2 class="grow" style="margin:0">Lobby</h2>
+        <span class="small">Room</span><span class="code" id="lb-code">----</span>
+      </div>
+      <div class="row" id="lb-sharerow">
+        <span class="linkbox" id="lb-link"></span>
+        <button class="mini" id="lb-copy">Copy link</button>
+      </div>
+      <div class="status" id="lb-status"></div>
+      <div class="cols">
+        <div>
+          <h3>Riders <span class="small" id="lb-count"></span></h3>
+          <div class="players" id="lb-players"></div>
+        </div>
+        <div>
+          <h3>Race settings</h3>
+          <div id="lb-hostctl">
+            <select id="lb-track" style="width:100%"></select>
+            <div class="row" id="lb-laps"></div>
+            <div class="row">
+              <button class="mini" id="lb-addbot">+ Add CPU</button>
+              <button class="mini" id="lb-rmbot">- Remove CPU</button>
+            </div>
+          </div>
+          <p class="small" id="lb-settings"></p>
+        </div>
+      </div>
+      <div class="row end">
+        <button id="lb-leave">Leave</button>
+        <button id="lb-hats">Wardrobe</button>
+        <button id="lb-ready">Ready</button>
+        <button class="go" id="lb-start">Start Race</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- RESULTS -->
+  <section class="screen dim" id="scr-results">
+    <div class="panel narrow">
+      <h2 id="res-title">Results</h2>
+      <table class="res" id="res-table"></table>
+      <div class="status" id="res-status"></div>
+      <div class="row end" id="res-btns"></div>
+    </div>
+  </section>
+
+  <!-- PAUSE -->
+  <section class="screen dim" id="scr-pause">
+    <div class="panel narrow">
+      <h2>Paused</h2>
+      <p class="small" id="pause-note"></p>
+      <div class="menu">
+        <button class="go" id="pause-resume">Resume</button>
+        <button id="pause-restart">Restart</button>
+        <button id="pause-quit">Quit to Menu</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- EDITOR -->
+  <div id="editor-ui">
+    <div class="ed-bar top" id="ed-tools"></div>
+    <div class="ed-bar bot">
+      <input type="text" id="ed-name" maxlength="24" spellcheck="false" placeholder="Track name">
+      <span class="lbl">Length</span>
+      <button id="ed-shorter">-</button><span class="lbl" id="ed-len"></span><button id="ed-longer">+</button>
+      <input type="range" id="ed-scroll" min="0" max="1000" value="0">
+      <select id="ed-load"></select>
+      <button id="ed-new">New</button>
+      <button id="ed-save">Save</button>
+      <button id="ed-del">Delete</button>
+      <button id="ed-share">Share</button>
+      <button class="go" id="ed-test">Test Ride</button>
+      <button id="ed-back">Exit</button>
+    </div>
+  </div>
+
+  <!-- EDITOR SHARE -->
+  <section class="screen dim" id="scr-share">
+    <div class="panel narrow">
+      <h2>Share Track</h2>
+      <p class="small">Copy this code to share your track, or paste a friend's code and press Import.</p>
+      <textarea id="share-text" spellcheck="false"></textarea>
+      <div class="status" id="share-status"></div>
+      <div class="row end">
+        <button id="share-copy">Copy</button>
+        <button id="share-import">Import</button>
+        <button class="go" id="share-close">Close</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- TOUCH CONTROLS -->
+  <div id="touch">
+    <div class="tb" id="tb-up" data-b="4"><svg viewBox="0 0 10 10"><polygon points="5,1 9,8 1,8"/></svg></div>
+    <div class="tb" id="tb-dn" data-b="8"><svg viewBox="0 0 10 10"><polygon points="1,2 9,2 5,9"/></svg></div>
+    <div class="tb" id="tb-lb" data-b="16"><svg viewBox="0 0 10 10"><polygon points="1,5 8,1 8,9"/></svg></div>
+    <div class="tb" id="tb-lf" data-b="32"><svg viewBox="0 0 10 10"><polygon points="9,5 2,1 2,9"/></svg></div>
+    <div class="tb" id="tb-tur" data-b="2">TURBO</div>
+    <div class="tb" id="tb-thr" data-b="1">GAS</div>
+    <div class="tb" id="tb-menu">II</div>
+  </div>
+
+  <div id="toast"></div>
+  <div id="rotate">Turn your phone sideways<br>to ride!</div>
+</div>
+
+<!-- PeerJS (WebRTC helper) for online multiplayer -->
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="hats.js"></script>
+<script src="tracks.js"></script>
+<script src="net.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
