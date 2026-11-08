@@ -12,21 +12,24 @@ const ITEM_KEYS = ['none', 'mud', 'cool', 'hay', 'bar'];
 
 // Ramp profiles: x in tiles, height in pixels. Ramps span all four lanes.
 const RAMPS = {
-  bump:   { w: 3,  label: 'Small bump',  pts: [[0, 0], [1.5, 10], [3, 0]] },
-  medium: { w: 6,  label: 'Medium ramp', pts: [[0, 0], [3, 22], [4, 22], [6, 0]] },
-  big:    { w: 6,  label: 'Big jump',    pts: [[0, 0], [4, 36], [5, 36], [5.2, 0]] },
-  double: { w: 10, label: 'Double hump', pts: [[0, 0], [2.5, 20], [3.5, 20], [5, 5], [6.5, 20], [7.5, 20], [10, 0]] },
+  bump:   { w: 3,  label: 'Small bump',  pts: [[0, 0], [1.5, 14], [3, 0]] },
+  medium: { w: 6,  label: 'Medium ramp', pts: [[0, 0], [3, 30], [4, 30], [6, 0]] },
+  big:    { w: 6,  label: 'Big jump',    pts: [[0, 0], [4, 50], [5, 50], [5.2, 0]] },
+  double: { w: 10, label: 'Double hump', pts: [[0, 0], [2.5, 27], [3.5, 27], [5, 7], [6.5, 27], [7.5, 27], [10, 0]] },
 };
 // Tiles at the very start and end of a track stay clear for the start grid.
 const RESERVED_START = 3, RESERVED_END = 6;
 
 // ---------- built-in tracks ----------
 // items: [type, startTile, lanes ('0'-'3'), length in tiles]
+// Positions are stretched by TRACK_STRETCH so the fast bikes have room to land.
+const TRACK_STRETCH = 1.3;
 function defTrack(id, name, diff, length, ramps, items) {
-  const out = { id, name, diff, length, ramps: [], items: [] };
-  for (const [type, x] of ramps) out.ramps.push({ type, x });
+  const S = (x) => Math.round(x * TRACK_STRETCH);
+  const out = { id, name, diff, length: S(length), ramps: [], items: [] };
+  for (const [type, x] of ramps) out.ramps.push({ type, x: S(x) });
   for (const [type, x, lanes, len = 1] of items)
-    for (const l of lanes) for (let i = 0; i < len; i++) out.items.push({ t: type, x: x + i, lane: +l });
+    for (const l of lanes) for (let i = 0; i < len; i++) out.items.push({ t: type, x: S(x) + i, lane: +l });
   return out;
 }
 
@@ -235,7 +238,7 @@ const Editor = {
   changed() { this.T = compileTrack(this.track); this.autosave(); },
   autosave() { if (this.track) Store.set('htm_edit', this.track); },
   setLength(n) {
-    n = clamp(n, 80, 500); if (n === this.track.length) return;
+    n = clamp(n, 80, 600); if (n === this.track.length) return;
     this.snapshot();
     this.track.length = n;
     const lim = n - RESERVED_END;
@@ -363,7 +366,7 @@ const Editor = {
     for (let i = 0; i < w; i++) {
       const a = Math.floor((i / w) * len), b2 = Math.floor(((i + 1) / w) * len);
       let mx = 0; for (let p = a; p < b2; p += 2) mx = Math.max(mx, this.T.hm[p]);
-      if (mx > 0.5) { ctx.fillStyle = '#b8743c'; const hh = Math.max(1, Math.round((mx / 36) * 7)); ctx.fillRect(x0 + i, y + 7 - hh, 1, hh); }
+      if (mx > 0.5) { ctx.fillStyle = '#b8743c'; const hh = Math.max(1, Math.round((mx / 50) * 7)); ctx.fillRect(x0 + i, y + 7 - hh, 1, hh); }
     }
     ctx.fillStyle = '#4a3422'; ctx.fillRect(x0, y + 8, w, 12);
     const cols = { mud: '#8a5a32', cool: '#7fe8ff', hay: '#f4d872', bar: '#e8383b' };
@@ -405,7 +408,7 @@ const Editor = {
   },
   testRide() {
     const t = sanitizeTrack(this.track); t.id = this.track.id;
-    const me = { id: 'me', name: Profile.name, color: Profile.color, hats: Profile.hats };
+    const me = { id: 'me', name: Profile.name, color: Profile.color, rider: Profile.rider };
     App.startRace(new Race({ mode: 'test', track: t, laps: 1, players: [me], localId: 'me', inputFor: (b) => (b.id === 'me' ? localInput() : null) }));
   },
 };

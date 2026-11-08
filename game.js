@@ -29,13 +29,17 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 // ---------- constants ----------
 const H = 270;
 let W = 480;                       // internal width adapts to the screen shape
-const LANE_H = 22, TRACK_TOP = 140, TRACK_BOT = TRACK_TOP + LANES * LANE_H;
-const CAM_X = 150;                 // where your bike sits on screen
+const LANE_H = 24, TRACK_TOP = 132, TRACK_BOT = TRACK_TOP + LANES * LANE_H;
+let CAM_X = 140;                   // where your bike sits on screen (slides back at speed)
 const STEP = 1 / 60;               // fixed physics step
 const IN = { THR: 1, TUR: 2, UP: 4, DN: 8, LB: 16, LF: 32 };
 const PHYS = {
-  g: 300, vNorm: 150, vTurbo: 212, accN: 120, accT: 165, coast: 55, mudMax: 58, laneSpeed: 7,
-  leanRate: 2.6, cleanTol: 0.55, perfectTol: 0.2, heatUp: 24, coolThr: 6, coolIdle: 15,
+  g: 330, vNorm: 195, vTurbo: 270, accN: 170, accT: 225, coast: 60, mudMax: 80, laneSpeed: 8,
+  leanRate: 4.2,          // how fast you can rotate in the air (radians/sec)
+  airFloat: 0.78,         // gravity while leaning back in the air (float further)
+  airDive: 1.35,          // gravity while leaning forward in the air (drop sooner)
+  airLane: 0.6,           // lane-change speed in the air, compared to the ground
+  cleanTol: 0.62, perfectTol: 0.24, heatUp: 24, coolThr: 6, coolIdle: 15,
   stallTime: 3, crashTime: 2,
 };
 const laneY = (lp) => TRACK_TOP + LANE_H * (lp + 0.5);
@@ -44,7 +48,6 @@ const COLORS = [
   { name: 'Orange', c: '#f07a2a' }, { name: 'Purple', c: '#9b4be8' }, { name: 'Pink', c: '#f25fae' }, { name: 'Teal', c: '#2ec4c4' },
 ];
 const BOT_NAMES = ['Dusty', 'Moxie', 'Gravel Gus', 'Rocket Rae', 'Mudslinger', 'Pip', 'Loopy Lou', 'Captain Revs', 'Nitro Nell', 'Bumpy', 'Skidmore', 'Clutch'];
-const HAS_HATS = () => typeof Hats !== 'undefined' && !!Hats.list;
 
 // ---------- saved profile & settings ----------
 const Profile = (() => {
@@ -52,7 +55,7 @@ const Profile = (() => {
   return {
     name: typeof p.name === 'string' && p.name.trim() ? p.name.trim().slice(0, 12) : 'Rider' + (10 + Math.floor(Math.random() * 90)),
     color: p.color >= 0 && p.color < COLORS.length ? p.color | 0 : Math.floor(Math.random() * COLORS.length),
-    hats: Array.isArray(p.hats) ? p.hats.slice(0, 5) : [],
+    rider: typeof p.rider === 'string' ? p.rider : RIDERS[Math.floor(Math.random() * RIDERS.length)].id,
   };
 })();
 function saveProfile() { Store.set('htm_profile', Profile); }
@@ -247,62 +250,12 @@ const Sound = {
   engineOff() { if (this.eng) this.eng.g.gain.setTargetAtTime(0, this.ac.currentTime, 0.05); },
 };
 
-// ---------- bike & rider sprites ----------
-// Body grid is 26 wide; wheels sit at rows 5-13 (rear at col 1, front at col 16).
-const BIKE_ROWS = [
-  '..................kk......',
-  '...................Lww....',
-  'XX.................Lww....',
-  '.XXX..DDDDDD.ZXXXX.L......',
-  '..XXXXXDDDDXXXXXXXXLXXXX..',
-  '.llllxxxLLLLLxxx...L.XX...',
-  '.......LLDDDL.......L.....',
-  '.......LDDDL........L.....',
-  '......L..LL.........L.....',
-  '.....L..............L.....',
-];
-const RIDER_OY = -9;   // rider sprite row 0 sits at body row -9
-const RIDER_ROWS = [
-  '............XXXX..........',
-  '...........XXXXXX.........',
-  '...........XXXXccc........',
-  '...........XXXXcc.........',
-  '............XXXX..........',
-  '...........ww.............',
-  '.........wwwwwww..........',
-  '........wwwwwwwwww........',
-  '........wwwXwww..ww.......',
-  '........wwwww......ww.....',
-  '........nnnnn.......ss....',
-  '........nnnnnnn...........',
-  '..........nnnnn...........',
-  '............nn............',
-  '............nns...........',
-  '...........sss............',
-];
-const HAT_X = 14, HAT_Y = RIDER_OY + 1;  // helmet top-centre in body grid coords
-const WHEEL_A = ['..kkkkk..', '.kLLLLLk.', 'kLl.l.lLk', 'kL.lll.Lk', 'kLllLllLk', 'kL.lll.Lk', 'kLl.l.lLk', '.kLLLLLk.', '..kkkkk..'];
-const WHEEL_B = ['..kkkkk..', '.kLLLLLk.', 'kL..l..Lk', 'kLl.l.lLk', 'kLlllllLk', 'kLl.l.lLk', 'kL..l..Lk', '.kLLLLLk.', '..kkkkk..'];
-const RIDER_TOP = ['..XXXX...', '.XXXXXX..', '.XXXXcc..', '..XXXX...', '...www...', '..wwwww..', '.w.www.w.', '...www...'];
-const RUN_A = RIDER_TOP.concat(['...nnn...', '..nn.nn..', '.nn...nn.', '.s.....s.']);
-const RUN_B = RIDER_TOP.concat(['...nnn...', '...nnn...', '...n.n...', '...s.s...']);
-const TUMBLE = ['...XXXX...', '..XXXXXX..', '..XXXXcc..', '...XXXwww.', '..wwwwwww.', '.nnwwww...', 'nn.nnn....', 's..nns....'];
-const ArtCache = {};
-function bikeArt(ci) {
-  if (ArtCache[ci]) return ArtCache[ci];
-  const col = (COLORS[ci] || COLORS[0]).c;
-  const map = { X: col, x: Pix.shade(col, 0.62), Z: Pix.shade(col, 1.35) };
-  return (ArtCache[ci] = {
-    body: Pix.build(BIKE_ROWS, map), rider: Pix.build(RIDER_ROWS, map),
-    wheel: [Pix.build(WHEEL_A, null, false), Pix.build(WHEEL_B, null, false)],
-    run: [Pix.build(RUN_A, map), Pix.build(RUN_B, map)], tumble: Pix.build(TUMBLE, map),
-  });
-}
+// Bike and rider sprites live in art.js.
 
 // ---------- racing physics ----------
 function newBike(p, slot) {
   return {
-    id: p.id, name: p.name, color: p.color | 0, hats: (p.hats || []).slice(0, 5), bot: !!p.bot, skill: p.skill || 0.6,
+    id: p.id, name: p.name, color: p.color | 0, char: p.rider || 'ace', bot: !!p.bot, skill: p.skill || 0.6,
     dist: -26 + slot.d, lane: slot.l, lp: slot.l, y: 0, vy: 0, v: 0, ang: 0, wheelie: 0, air: false,
     heat: 0, state: 'ride', st: 0, inv: 0, finished: false, place: 0, finishTime: 0, lap: 1,
     qUp: 0, qDn: 0, holdU: 0, holdD: 0, cUp: -1, cDn: -1, input: 0, slide: 0, ai: null,
@@ -350,7 +303,7 @@ function stepBike(b, dt, R) {
 
   // lane changes (on the ground only)
   const settled = Math.abs(b.lp - b.lane) < 0.04;
-  if (ride && !b.air && racing && !b.finished) {
+  if (ride && racing && !b.finished) {
     b.holdU = inp & IN.UP ? b.holdU + dt : 0;
     b.holdD = inp & IN.DN ? b.holdD + dt : 0;
     if (settled) {
@@ -361,8 +314,9 @@ function stepBike(b, dt, R) {
     }
   } else if (!racing) { b.qUp = b.qDn = 0; }
   b.qUp = Math.min(b.qUp, 2); b.qDn = Math.min(b.qDn, 2);
-  if (b.lp < b.lane) b.lp = Math.min(b.lane, b.lp + PHYS.laneSpeed * dt);
-  else if (b.lp > b.lane) b.lp = Math.max(b.lane, b.lp - PHYS.laneSpeed * dt);
+  const ls = PHYS.laneSpeed * (b.air ? PHYS.airLane : 1) * dt;
+  if (b.lp < b.lane) b.lp = Math.min(b.lane, b.lp + ls);
+  else if (b.lp > b.lane) b.lp = Math.max(b.lane, b.lp - ls);
 
   // movement + jumping
   const lean = ride && racing && !b.finished ? (inp & IN.LB ? 1 : 0) - (inp & IN.LF ? 1 : 0) : 0;
@@ -376,7 +330,8 @@ function stepBike(b, dt, R) {
       b.ang = Math.atan(s0) + b.wheelie; b.wheelie = 0;
     } else { b.y = g1; b.vy = 0; }
   } else {
-    b.vy -= PHYS.g * dt; b.y += b.vy * dt;
+    // leaning back floats you further, leaning forward drops you sooner
+    b.vy -= PHYS.g * (lean > 0 ? PHYS.airFloat : lean < 0 ? PHYS.airDive : 1) * dt; b.y += b.vy * dt;
     b.ang += lean * PHYS.leanRate * dt;
     b.ang -= b.ang * 0.25 * dt;
     b.ang = clamp(b.ang, -1.4, 1.4);
@@ -425,7 +380,7 @@ function crashBike(b, R) {
   if (b.state === 'crash') return;
   b.state = 'crash'; b.st = 0; b.qUp = b.qDn = 0; b.turbo = false;
   const r = b.rider;
-  r.x = b.dist + 4; r.h = b.y + 14; r.vx = b.v * 0.55 + 35; r.vy = b.air ? Math.max(40, b.vy * 0.4 + 60) : 85;
+  r.x = b.dist + 6; r.h = b.y + 22; r.vx = b.v * 0.55 + 35; r.vy = b.air ? Math.max(40, b.vy * 0.4 + 60) : 85;
   r.rot = 0; r.ph = 0; r.flip = 0;
   b.slide = b.v * 0.6; b.v = 0; b.wheelie = 0;
   R.ev('crash', b);
@@ -472,7 +427,7 @@ function bikeCollisions(R) {
     for (const o of R.bikes) {
       if (o === a || o.state === 'crash' || o.finished || o.inv > 0) continue;
       const d = o.dist - a.dist;
-      if (d > 6 && d < 18 && Math.abs(a.lp - o.lp) < 0.55 && Math.abs(a.y - o.y) < 9 && a.v > o.v + 12) { crashBike(a, R); break; }
+      if (d > 8 && d < 26 && Math.abs(a.lp - o.lp) < 0.55 && Math.abs(a.y - o.y) < 10 && a.v > o.v + 14) { crashBike(a, R); break; }
     }
   }
 }
@@ -621,23 +576,17 @@ function makeBots(n, usedColors) {
   for (let i = 0; i < n; i++) {
     const color = free.length ? free.shift() : Math.floor(Math.random() * COLORS.length);
     out.push({ id: 'cpu' + i + '_' + Math.floor(Math.random() * 1e6), name: names[i % names.length], color, bot: true,
-      skill: 0.5 + Math.random() * 0.45, hats: HAS_HATS() ? Hats.randomStack(1 + Math.floor(Math.random() * 3)) : [] });
+      skill: 0.5 + Math.random() * 0.45, rider: pick(RIDER_IDS) });
     usedColors.push(color);
   }
   return out;
 }
 
-// ---------- per-bike render state (wheels, hat wobble, flying hats) ----------
-const OCW = 72, OCH = 132, PVX = 36, PVY = 120, BX0 = PVX - 13, BY0 = PVY - 14;
+// ---------- per-bike render state (wheel spin, suspension squash) ----------
 const RS = new Map();
 function rsOf(id) {
   let r = RS.get(id);
-  if (!r) {
-    const oc = mk(OCW, OCH);
-    r = { oc, x: oc.getContext('2d'), wr: 0, py: null, pvy: 0, wob: HAS_HATS() ? Hats.newWobble() : null, fly: null, dustT: 0, steamT: 0 };
-    r.x.imageSmoothingEnabled = false;
-    RS.set(id, r);
-  }
+  if (!r) { r = { wr: 0, sq: 0, dustT: 0, steamT: 0 }; RS.set(id, r); }
   return r;
 }
 
@@ -664,12 +613,7 @@ function updateRS(vbs, T, dt) {
   for (const vb of vbs) {
     const rs = rsOf(vb.id);
     if (vb.state !== 'crash') rs.wr += (vb.v * dt) / 11;
-    // vertical acceleration drives the hat wobble
-    const vy = rs.py == null ? 0 : (vb.y - rs.py) / Math.max(dt, 0.001);
-    const ay = clamp((vy - rs.pvy) / Math.max(dt, 0.001), -3000, 3000);
-    rs.py = vb.y; rs.pvy = vy;
-    if (rs.wob && HAS_HATS()) Hats.stepWobble(rs.wob, dt, ay, vb.v, vb.air, vb.hats.length);
-    if (rs.fly && HAS_HATS()) Hats.stepFlying(rs, vb, T, dt);
+    rs.sq = Math.max(0, rs.sq - dt * 7);
     // dust & steam
     const onGround = !vb.air && vb.state !== 'crash';
     if (onGround && vb.v > 40) {
@@ -677,12 +621,12 @@ function updateRS(vbs, T, dt) {
       if (rs.dustT <= 0) {
         rs.dustT = 0.045;
         const mud = itemAt(T, vb.dist, Math.round(vb.lp)) === ITEM.MUD;
-        part(vb.dist - 12, vb.lp + rnd(-0.1, 0.1), vb.y + 1, -vb.v * 0.15 + rnd(-15, 15), rnd(10, 45), rnd(0.2, 0.45), mud ? '#4e2c14' : Math.random() < 0.5 ? '#d8a46a' : '#c4884e');
+        part(vb.dist - 16, vb.lp + rnd(-0.1, 0.1), vb.y + 1, -vb.v * 0.15 + rnd(-15, 15), rnd(10, 45), rnd(0.2, 0.45), mud ? '#4e2c14' : Math.random() < 0.5 ? '#d8a46a' : '#c4884e');
       }
     }
     if (vb.state === 'stall' || (vb.heat > 80 && vb.state === 'ride')) {
       rs.steamT -= dt;
-      if (rs.steamT <= 0) { rs.steamT = vb.state === 'stall' ? 0.05 : 0.14; part(vb.dist + rnd(-4, 4), vb.lp, vb.y + 10, rnd(-10, 10), rnd(25, 45), rnd(0.5, 0.9), Math.random() < 0.5 ? '#f4f2e8' : '#c8c8d0', { g: -10, sz: 2 }); }
+      if (rs.steamT <= 0) { rs.steamT = vb.state === 'stall' ? 0.05 : 0.14; part(vb.dist + rnd(-4, 4), vb.lp, vb.y + 14, rnd(-10, 10), rnd(25, 45), rnd(0.5, 0.9), Math.random() < 0.5 ? '#f4f2e8' : '#c8c8d0', { g: -10, sz: 2 }); }
     }
   }
 }
@@ -748,8 +692,10 @@ function drawSky(camD, camY, now) {
   const cy = Math.round(camY * 0.4);
   tileH(BG.mtn, 0, 44 + cy, 0.1, camD);
   tileH(BG.hills, 0, 70 + cy, 0.22, camD);
-  ctx.fillStyle = '#4c9a44'; ctx.fillRect(0, 116 + cy, W, 40);
-  tileH(BG.stand[(now * 2.5 | 0) & 1], 0, 82 + Math.round(camY * 0.7), 0.55, camD);
+  ctx.fillStyle = '#4c9a44'; ctx.fillRect(0, 116 + cy, W, H);
+  const sy = 76 + Math.round(camY * 0.75);
+  tileH(BG.stand[(now * 2.5 | 0) & 1], 0, sy, 0.55, camD);
+  ctx.fillStyle = '#4c9a44'; ctx.fillRect(0, sy + 54, W, H);
 }
 const DIRT = ['#b8743c', '#ad6c36'], LIT = ['#cf8a4c', '#c4824a'], SHADE = ['#965a2c', '#8c5428'];
 const DIV = '#d49a5e', FACE = '#7c4626', FACE2 = '#6a3a1e', LIP = '#4e2c14';
@@ -893,28 +839,20 @@ function drawForeground(camLeft) {
 }
 
 function drawBike(vb, T, camD, now) {
-  const rs = rsOf(vb.id), art = bikeArt(vb.color);
+  const rs = rsOf(vb.id), art = bikeArt(vb.color, vb.char);   // vb.rider is the crash tumble state
   const sx = Math.round(CAM_X + wrapD(vb.dist - camD, T.len));
   const gy = laneY(vb.lp);
   if (sx > -70 && sx < W + 70) {
     const gh = trackH(T, vb.dist), air = vb.y - gh;
     if (air > 2) {
-      const sw = Math.max(6, 22 - air * 0.25);
+      const sw = Math.max(8, 30 - air * 0.22);
       ctx.fillStyle = 'rgba(20,12,28,0.35)'; ctx.fillRect(Math.round(sx - sw / 2), Math.round(gy - gh - 1), Math.round(sw), 3);
-    }
-    const o = rs.x; o.clearRect(0, 0, OCW, OCH);
-    const wf = (rs.wr | 0) & 1;
-    o.drawImage(art.wheel[wf], BX0 + 1, BY0 + 5); o.drawImage(art.wheel[wf], BX0 + 16, BY0 + 5);
-    o.drawImage(art.body, BX0 - 1, BY0 - 1);
-    if (vb.state !== 'crash') {
-      o.drawImage(art.rider, BX0 - 1, BY0 + RIDER_OY - 1);
-      if (HAS_HATS() && vb.hats.length && !rs.fly) Hats.drawStack(o, vb.hats, BX0 + HAT_X, BY0 + HAT_Y, rs.wob, now);
     }
     ctx.save();
     if (vb.inv > 0 && (Math.floor(now * 16) & 1)) ctx.globalAlpha = 0.45;
-    ctx.translate(sx, Math.round(gy - vb.y) - 5);
+    ctx.translate(sx, Math.round(gy - vb.y) - BIKE.contact);
     ctx.rotate(-vb.ang);
-    ctx.drawImage(rs.oc, -PVX, -PVY + 5);
+    drawBikeArt(ctx, art, (rs.wr | 0) & 1, Math.round(rs.sq * 2), vb.state !== 'crash');
     ctx.restore();
   }
   if (vb.state === 'crash') {
@@ -924,7 +862,7 @@ function drawBike(vb, T, camD, now) {
       ctx.save();
       if (r.ph <= 1) {
         const sp = art.tumble;
-        ctx.translate(rx, ry - 5); ctx.rotate(-r.rot); ctx.drawImage(sp, -(sp.width >> 1), -(sp.height >> 1));
+        ctx.translate(rx, ry - 7); ctx.rotate(-r.rot); ctx.drawImage(sp, -(sp.width >> 1), -(sp.height >> 1));
       } else {
         const sp = art.run[r.ph === 2 ? (now * 10 | 0) & 1 : 1];
         ctx.translate(rx, ry); if (r.flip) ctx.scale(-1, 1); ctx.drawImage(sp, -(sp.width >> 1), -sp.height + 1);
@@ -932,7 +870,6 @@ function drawBike(vb, T, camD, now) {
       ctx.restore();
     }
   }
-  if (HAS_HATS() && rs.fly) Hats.drawFlying(rs, vb, T, camD);
 }
 
 function drawParticles(T, camD) {
@@ -1052,16 +989,16 @@ function handleEvent(ev, R, vbs) {
     case 'go': Sound.play('go'); break;
     case 'crash':
       Sound.play('crash', vol);
-      if (vb) { puff(vb.dist, vb.lp, vb.y, 16, '#d8a46a', 70); if (HAS_HATS()) Hats.launch(rsOf(vb.id), vb); }
+      if (vb) puff(vb.dist, vb.lp, vb.y, 18, '#d8a46a', 80);
       if (me) flash('WIPEOUT!', '#ff8a2a');
       break;
-    case 'remount': if (vb && HAS_HATS()) Hats.recall(rsOf(vb.id), vb); Sound.play('pop', vol * 0.8); break;
+    case 'remount': Sound.play('pop', vol * 0.8); break;
     case 'land':
-      if (vb) { puff(vb.dist, vb.lp, vb.y, Math.min(10, 2 + (ev.a || 0) / 15), '#d8a46a', 45); const rs = rsOf(vb.id); if (rs.wob && HAS_HATS()) Hats.kick(rs.wob, (ev.a || 0) / 60); }
+      if (vb) { puff(vb.dist, vb.lp, vb.y, Math.min(12, 2 + (ev.a || 0) / 15), '#d8a46a', 50); if ((ev.a || 0) > 60) rsOf(vb.id).sq = 1; }
       if ((ev.a || 0) > 40) Sound.play('land', vol * 0.6);
       break;
     case 'perfect':
-      if (vb) { puff(vb.dist, vb.lp, vb.y, 10, '#ffd23f', 60); const rs = rsOf(vb.id); if (rs.wob && HAS_HATS()) Hats.kick(rs.wob, (ev.a || 0) / 60); }
+      if (vb) { puff(vb.dist, vb.lp, vb.y, 12, '#ffd23f', 70); rsOf(vb.id).sq = 1; }
       Sound.play('land', vol * 0.5); Sound.play('perfect', me ? 1 : 0);
       if (me) flash('PERFECT!', '#ffd23f', 0.9);
       break;
@@ -1100,7 +1037,7 @@ const App = {
     $('pause-restart').onclick = () => { this.setPaused(false); if (this.race && this.race.mode === 'test') Editor.testRide(); else if (this.lastSolo) this.startSolo(this.lastSolo); };
     $('pause-quit').onclick = () => this.quitRace();
     addEventListener('pointerdown', () => Sound.init(), { once: false, passive: true });
-    if (HAS_HATS()) Hats.initUI();
+    Garage.init();
     if (typeof Editor !== 'undefined') Editor.init();
     if (Net.init) Net.init();
     this.makeDemo();
@@ -1120,10 +1057,10 @@ const App = {
   },
   go(name) {
     if (name === 'host') { Net.host(); return; }
-    if (name === 'wardrobe-from-join' || name === 'wardrobe-from-lobby') { Hats.openWardrobe(name.slice(14)); this.showScreen('wardrobe'); return; }
+    if (name === 'wardrobe-from-join' || name === 'wardrobe-from-lobby') { Garage.open(name.slice(14)); this.showScreen('wardrobe'); return; }
     if (name === 'lobby') { this.race = null; this.showScreen('lobby'); this.setScene('menu'); Net.renderLobby(); return; }
     if (name === 'editor') { if (typeof Editor !== 'undefined') Editor.open(); else toast('Track editor comes in stage 4'); return; }
-    if (name === 'wardrobe' && HAS_HATS()) Hats.openWardrobe('title');
+    if (name === 'wardrobe') Garage.open('title');
     if (name === 'solo') this.buildSolo();
     if (name === 'title') { this.refreshTitle(); if (Net.active && !this.race) Net.leave(true); }
     if (name === 'join') { if (!Net.joining) $('join-status').textContent = ''; $('join-rider').textContent = 'Riding as ' + Profile.name; if (!this.touchOn) setTimeout(() => $('join-code').focus(), 50); }
@@ -1144,7 +1081,7 @@ const App = {
   },
   refreshTitle() {
     $('btn-mute').textContent = 'Sound: ' + (Settings.mute ? 'Off' : 'On');
-    $('title-rider').textContent = 'Riding as ' + Profile.name + (Profile.hats.length ? ' + ' + Profile.hats.length + ' hat' + (Profile.hats.length > 1 ? 's' : '') : '');
+    $('title-rider').textContent = 'Riding as ' + Profile.name + ' (' + riderDef(Profile.rider).name + ')';
   },
   buildSolo() {
     const list = $('solo-tracks'); list.innerHTML = '';
@@ -1166,7 +1103,7 @@ const App = {
   startSolo(setup) {
     setup = setup || { track: TrackStore.get(Settings.track) || BUILTIN_TRACKS[0], laps: Settings.laps };
     this.lastSolo = setup;
-    const me = { id: 'me', name: Profile.name, color: Profile.color, hats: Profile.hats };
+    const me = { id: 'me', name: Profile.name, color: Profile.color, rider: Profile.rider };
     const players = [me, ...makeBots(3, [Profile.color])];
     this.startRace(new Race({ mode: 'solo', track: setup.track, laps: setup.laps, players, localId: 'me', inputFor: (b) => (b.id === 'me' ? localInput() : null) }));
   },
@@ -1241,6 +1178,14 @@ const App = {
     try { this.update(dt, now); this.render(now); } catch (e) { console.error(e); }
     present();
   },
+  // vertical follow for big air, and slide the bike back so you see further ahead at speed
+  follow(b, dt) {
+    const ty = clamp((b.y - 24) * 0.78, 0, 100);
+    this.camY += (ty - this.camY) * Math.min(1, dt * 6);
+    this.lead += ((140 - clamp(b.v / PHYS.vTurbo, 0, 1) * 40) - this.lead) * Math.min(1, dt * 2);
+    CAM_X = Math.round(this.lead);
+  },
+  lead: 140,
   update(dt, now) {
     if (Net.tick) Net.tick(dt);
     if (this.scene === 'race' && this.race) {
@@ -1265,8 +1210,7 @@ const App = {
       const target = me || [...vbs].sort((a, b) => b.dist - a.dist)[0];
       if (target) {
         if (me) this.camD = me.dist; else this.camD += (target.dist - this.camD) * Math.min(1, dt * 4);
-        const ty = clamp((target.y - 30) * 0.6, 0, 44);
-        this.camY += (ty - this.camY) * Math.min(1, dt * 5);
+        this.follow(target, dt);
       }
       if (me && !this.paused && R.phase !== 'done') Sound.engine(me.state === 'crash' ? 0 : me.v, me.turbo, me.state !== 'crash' && me.state !== 'stall');
       else Sound.engineOff();
@@ -1282,7 +1226,7 @@ const App = {
       updateRS(vbs, D.track, dt); updateParticles(dt, D.track);
       const lead = vbs.reduce((a, b) => (b.dist > a.dist ? b : a));
       this.camD += (lead.dist - this.camD) * Math.min(1, dt * 2);
-      this.camY += (clamp((lead.y - 30) * 0.6, 0, 44) - this.camY) * Math.min(1, dt * 3);
+      this.follow(lead, dt);
     } else if (this.scene === 'editor' && typeof Editor !== 'undefined') Editor.update(dt);
   },
   render(now) {

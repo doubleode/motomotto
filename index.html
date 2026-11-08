@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#140c1c">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="description" content="Hat Trick Moto — a side-scrolling pixel motocross racer with online multiplayer and stackable hats.">
+<meta name="description" content="Hat Trick Moto — a side-scrolling pixel motocross racer with online multiplayer.">
 <title>Hat Trick Moto</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -59,16 +59,11 @@
   .swatches { display:flex; gap:6px; flex-wrap:wrap; }
   .swatch { width:26px; height:26px; padding:0; box-shadow:0 0 0 3px var(--ink); }
   .swatch.sel { box-shadow:0 0 0 3px var(--paper), 0 0 0 6px var(--ink); }
-  .hatgrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(52px, 1fr)); gap:6px; }
-  .hatbtn { padding:4px; display:flex; flex-direction:column; align-items:center; gap:2px; font-size:6px; line-height:1.2; text-transform:none; }
-  .hatbtn canvas { width:40px; height:40px; image-rendering:pixelated; }
-  .hatbtn.on { background:var(--sun); }
-  .stack { display:flex; flex-direction:column-reverse; gap:4px; min-height:40px; }
-  .stackitem { display:flex; align-items:center; gap:6px; background:#2a2140; padding:4px 6px; font-size:8px; }
-  .stackitem canvas { width:28px; height:28px; image-rendering:pixelated; }
-  .stackitem .grow { color:var(--paper); }
-  .stackitem button { padding:4px 6px; font-size:8px; }
-  #wr-preview { width:144px; height:216px; image-rendering:pixelated; background:linear-gradient(#62c3f0 0 70%, #b8743c 70% 100%); box-shadow:0 0 0 3px var(--ink); display:block; margin:0 auto; }
+  .ridergrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(92px, 1fr)); gap:8px; }
+  .riderbtn { padding:6px 4px; display:flex; flex-direction:column; align-items:center; gap:4px; font-size:9px; }
+  .riderbtn canvas { width:80px; height:76px; image-rendering:pixelated; }
+  .riderbtn.on { background:var(--sun); }
+  #wr-preview { width:192px; height:168px; image-rendering:pixelated; background:#62c3f0; box-shadow:0 0 0 3px var(--ink); display:block; margin:0 auto; }
   .tracklist { display:grid; gap:6px; }
   .tracklist button { text-align:left; display:flex; justify-content:space-between; gap:8px; }
   .players { display:grid; gap:6px; margin:6px 0 10px; }
@@ -111,7 +106,8 @@
     .menu { gap:6px; }
     .menu button { padding:8px 10px; }
     h2 { margin-bottom:6px; } h3 { margin:6px 0 4px; }
-    #wr-preview { width:96px; height:144px; }
+    #wr-preview { width:128px; height:112px; }
+    .riderbtn canvas { width:60px; height:57px; }
   }
 
   #toast { position:absolute; left:50%; top:16%; transform:translateX(-50%); background:var(--ink); border:3px solid var(--paper);
@@ -140,12 +136,12 @@
   <section class="screen" id="scr-title">
     <div class="panel narrow">
       <h1 class="logo"><span>HAT</span> <span>TRICK</span> <span>MOTO</span></h1>
-      <p class="tag">Stack hats. Hit jumps. Don't overheat.</p>
+      <p class="tag">Hit the jumps. Lean hard. Don't overheat.</p>
       <div class="menu">
         <button class="go" data-go="solo">Solo Practice</button>
         <button data-go="host">Host Online Race</button>
         <button data-go="join">Join Online Race</button>
-        <button data-go="wardrobe">Hat Wardrobe</button>
+        <button data-go="wardrobe">Garage</button>
         <button data-go="editor">Track Editor</button>
       </div>
       <div class="row center small" style="margin-top:12px">
@@ -165,9 +161,9 @@
       <table class="keys">
         <tr><td>Z</td><td>Throttle</td></tr>
         <tr><td>X</td><td>Turbo — faster, but heats the engine</td></tr>
-        <tr><td>Up / Down</td><td>Change lanes (on the ground)</td></tr>
-        <tr><td>Left</td><td>Lean back (wheelie / nose up in the air)</td></tr>
-        <tr><td>Right</td><td>Lean forward (nose down in the air)</td></tr>
+        <tr><td>Up / Down</td><td>Change lanes (works in the air too)</td></tr>
+        <tr><td>Left</td><td>Lean back — nose up and float further in the air</td></tr>
+        <tr><td>Right</td><td>Lean forward — nose down and drop faster</td></tr>
         <tr><td>Esc</td><td>Pause / menu</td></tr>
       </table>
       <p class="small">Land with your bike matching the slope of the ground for a clean landing and a speed boost. Land badly and you tumble. If the TEMP gauge fills up, your engine overheats and stalls for 3 seconds — ride over the blue cooling strips to reset it. Mud slows you down, hay bales and barriers knock you off, and bumping into another rider's back wheel sends you flying.</p>
@@ -176,26 +172,23 @@
     </div>
   </section>
 
-  <!-- WARDROBE -->
+  <!-- GARAGE -->
   <section class="screen dim" id="scr-wardrobe">
     <div class="panel">
-      <h2>Hat Wardrobe</h2>
+      <h2>Garage</h2>
       <div class="cols">
-        <div style="max-width:240px">
-          <canvas id="wr-preview" width="48" height="72"></canvas>
+        <div style="max-width:260px">
+          <canvas id="wr-preview" width="64" height="56"></canvas>
           <h3>Rider name</h3>
           <input type="text" id="wr-name" maxlength="12" autocomplete="off" spellcheck="false">
           <h3>Bike color</h3>
           <div class="swatches" id="wr-colors"></div>
-          <h3>Your stack <span class="small" id="wr-count"></span></h3>
-          <div class="stack" id="wr-stack"></div>
         </div>
         <div>
-          <h3>Pick up to 5 hats — tap to stack</h3>
-          <div class="hatgrid" id="wr-hats"></div>
+          <h3>Pick your rider</h3>
+          <div class="ridergrid" id="wr-riders"></div>
           <div class="row">
             <button id="wr-random">Randomize</button>
-            <button id="wr-clear">Clear</button>
             <span class="grow"></span>
             <button class="go" id="wr-done">Done</button>
           </div>
@@ -268,7 +261,7 @@
       </div>
       <div class="row end">
         <button id="lb-leave">Leave</button>
-        <button id="lb-hats">Wardrobe</button>
+        <button id="lb-hats">Garage</button>
         <button id="lb-ready">Ready</button>
         <button class="go" id="lb-start">Start Race</button>
       </div>
@@ -348,7 +341,7 @@
 
 <!-- PeerJS (WebRTC helper) for online multiplayer -->
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="hats.js"></script>
+<script src="art.js"></script>
 <script src="tracks.js"></script>
 <script src="net.js"></script>
 <script src="game.js"></script>

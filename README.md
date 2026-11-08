@@ -2,7 +2,7 @@
 
 **Play it:** https://doubleode.github.io/motomotto/ (after GitHub Pages is turned on — see below)
 
-A side-scrolling pixel motocross racer for the browser. Race up to 6 friends online, hit jumps, manage your engine heat — and stack up to 5 silly hats on your helmet that wobble on every landing and go flying when you crash.
+A fast side-scrolling pixel motocross racer for the browser. Race up to 6 friends online, launch off big jumps, steer your bike through the air, and keep your engine from overheating. Pick from six riders and eight bike colors.
 
 Everything (art, sound, names) is original and drawn or synthesized in code. There are no image or sound files.
 
@@ -28,7 +28,7 @@ Go to **https://github.com** and sign up (free). Remember your username — it b
    - `index.html`
    - `game.js`
    - `net.js`
-   - `hats.js`
+   - `art.js`
    - `tracks.js`
    - `README.md`
 3. Scroll down and click **Commit changes**.
@@ -47,7 +47,7 @@ That address is your game. Bookmark it and share it.
 Upload the changed file again the same way (**Add file → Upload files**). GitHub replaces the old one. The site updates within a minute or two — refresh your browser (on a phone you may need to close and reopen the tab).
 
 ### Just want to try it on your own computer first?
-Double-click `index.html` to open it in your browser. Solo Practice, the Wardrobe, and the Track Editor all work this way. Online play also needs an internet connection.
+Double-click `index.html` to open it in your browser. Solo Practice, the Garage, and the Track Editor all work this way. Online play also needs an internet connection.
 
 ---
 
@@ -58,7 +58,7 @@ Double-click `index.html` to open it in your browser. Solo Practice, the Wardrob
 2. The host clicks **Copy link** and sends it to friends by text or chat.
    The link looks like `https://doubleode.github.io/motomotto/?room=KZQP`.
 3. **Friends** open the link (or open the game, click **Join Online Race**, and type the code), then click **Join**.
-   They can press **Change rider** first to pick a name, bike color, and hats.
+   They can press **Change rider** first to pick a name, bike color, and rider.
 4. In the lobby, each friend clicks **Ready**. The host can pick the track and laps, and add computer riders (CPU) to fill the grid.
 5. When everyone shows **READY**, the host clicks **Start Race**.
 6. After the race, the host clicks **Back to Lobby** to race again.
@@ -68,7 +68,7 @@ Good to know:
 - **The host's game runs the race.** The host should keep the game open and on screen until the race ends. If the host leaves, the room closes.
 - If a friend leaves mid-race, the race keeps going without them.
 - Someone who joins while a race is running watches it, then joins the next one.
-- Friends can open the Wardrobe from the lobby and change hats — everyone sees the new stack.
+- Friends can open the Garage from the lobby and switch riders or colors — everyone sees the change.
 
 ### If joining doesn't work
 - **"No room called…"** — check the code with the host (codes use letters only), and make sure the host is still in the lobby.
@@ -83,9 +83,9 @@ Good to know:
 |---|---|---|
 | Throttle | **Z** (or Space) | **GAS** (right side) |
 | Turbo | **X** | **TURBO** (right side) |
-| Change lane up / down | **↑ / ↓** | ▲ / ▼ (left side) |
-| Lean back | **←** | ◀ (left side) |
-| Lean forward | **→** | ▶ (left side) |
+| Change lane up / down | **↑ / ↓** (works in the air too) | ▲ / ▼ (left side) |
+| Lean back (nose up, float further) | **←** | ◀ (left side) |
+| Lean forward (nose down, drop sooner) | **→** | ▶ (left side) |
 | Pause / menu | **Esc** | **II** button |
 
 On phones the game asks to go fullscreen when a race starts. Turn the phone sideways.
@@ -93,18 +93,21 @@ On phones the game asks to go fullscreen when a race starts. Turn the phone side
 ## How to race
 
 - **Turbo** is faster but heats your engine. If the **TEMP** gauge fills up, you stall for 3 seconds. Ride over a **blue cooling strip** to reset it to zero.
-- **Jumps:** in the air, lean back or forward so your bike matches the slope of the ground where you'll land.
-  Match it closely for a **PERFECT** landing and a speed boost. Land badly and you crash.
+- **Jumps:** you have lots of control in the air.
+  - **Lean back** tips the nose up *and* lets you float further.
+  - **Lean forward** tips the nose down *and* brings you down sooner — handy for landing on a downslope instead of overshooting.
+  - You can even **change lanes in mid-air** to line up a landing or dodge a barrier.
+  Land with your bike matching the slope of the ground for a **PERFECT** landing and a speed boost. Land badly and you crash.
 - On the ground, holding **lean back** pops a wheelie, which tips your nose up for the next jump.
 - **Mud** slows you down. **Hay bales** and **barriers** knock you off — switch lanes, or jump over them.
 - Running into another rider's **back wheel** from behind makes *you* crash.
-- When you crash, your rider tumbles, runs back to the bike, and hops on after about 2 seconds. Your hats bounce down the track and pop back on.
+- When you crash, your rider tumbles, runs back to the bike, and hops on after about 2 seconds.
 
-## Hats
+## Riders
 
-Open **Hat Wardrobe** from the title screen. Tap hats to stack them (5 max, repeats allowed — five rubber ducks is a valid lifestyle). Use ▲ ▼ to reorder and X to remove. **Randomize** picks a random stack and color. Your name, color, and hats are saved in your browser.
+Open **Garage** from the title screen to set your name, pick a bike color, and choose one of six riders — each has their own gear and helmet design:
 
-24 hats: Cowboy Hat, Top Hat, Propeller Beanie, Chef Hat, Pirate Hat, Viking Helmet, Traffic Cone, Party Hat, Crown, Wizard Hat, Baseball Cap, Sombrero, Bunny Ears, Fishbowl, Birthday Cake, Tiny Umbrella, Fez, Mohawk, Graduation Cap, Rubber Duck, Antlers, Pineapple, Halo, Flower Pot.
+**Ace** (stripe), **Blaze** (flames), **Bolt** (lightning), **Checkers** (checkered flag), **Nova** (star), **Moss** (stripe). Ace's gear matches your bike color. Your choices are saved in your browser.
 
 ## Tracks and the editor
 
@@ -132,13 +135,13 @@ Saved tracks and your rider live in your browser's storage. Clearing your browse
 | `index.html` | The page: menus, lobby, wardrobe, editor buttons, touch controls, and styles. |
 | `game.js` | The game engine: physics, jumps, heat, crashes, computer riders, drawing, sound, HUD, and the main loop. |
 | `net.js` | Online multiplayer: hosting, joining, the lobby, and keeping everyone's race in sync. |
-| `hats.js` | The pixel-art helper, all 24 hats, the wobble and fly-off physics, and the wardrobe. |
+| `art.js` | The pixel-art helper, the bike and rider sprites, the six riders, and the Garage screen. |
 | `tracks.js` | Ramp shapes, the three built-in tracks, and the track editor. |
 
 ### For tinkerers
-- Physics numbers (speed, gravity, heat rate, landing tolerance) are in the `PHYS` table near the top of `game.js`.
+- Physics numbers (speed, gravity, air control, heat rate, landing tolerance) are in the `PHYS` table near the top of `game.js`. Ramp heights are in `RAMPS` in `tracks.js`.
 - Built-in tracks are listed in `BUILTIN_TRACKS` in `tracks.js` — each line is a ramp or item at a tile position.
-- Hats are drawn as rows of letters in `HAT_DEFS` in `hats.js`. Each letter is a color from `PAL`; `.` is see-through; the black outline is added automatically. Add a new entry and it appears in the wardrobe.
+- Bikes and riders are drawn as rows of letters in `art.js` (`BIKE_ROWS`, `RIDER_ROWS`). Each letter is a color; `.` is see-through; the black outline is added automatically. New riders go in the `RIDERS` list, and helmet designs in `HELMETS`.
 - Testing online play with your own signaling server: run a PeerJS server and add `?peer=localhost:9000` to the address.
 
 Online play uses [PeerJS](https://peerjs.com/) (MIT license), loaded from the jsDelivr CDN.

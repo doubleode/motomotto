@@ -10,7 +10,7 @@
      host -> client : welcome, full, lobby, start, s (snapshot), results, tolobby, bye
    ===================================================================== */
 
-const PEER_PREFIX = 'hattrickmoto-v1-';
+const PEER_PREFIX = 'hattrickmoto-v2-';   // bump when the message format changes so old copies can't join
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 const MAX_PLAYERS = 6;
 const SNAP_EVERY = 3;            // physics steps between snapshots (60/3 = 20 per second)
@@ -33,7 +33,7 @@ const Net = {
     $('join-wardrobe').onclick = () => App.go('wardrobe-from-join');
     $('lb-copy').onclick = () => this.copyLink();
     $('lb-leave').onclick = () => { this.leave(); App.go('title'); };
-    $('lb-hats').onclick = () => App.go('wardrobe-from-lobby');
+    $('lb-hats').onclick = () => App.go('wardrobe-from-lobby');   // opens the Garage
     $('lb-ready').onclick = () => this.toggleReady();
     $('lb-start').onclick = () => this.startRace();
     $('lb-addbot').onclick = () => this.addBot();
@@ -56,7 +56,7 @@ const Net = {
     return o;
   },
   shareLink() { return location.origin + location.pathname + '?room=' + this.code + (/[?&]peer=/.test(location.search) ? '&' + /peer=[^&]+/.exec(location.search)[0] : ''); },
-  me() { return { name: Profile.name, color: Profile.color, hats: Profile.hats.slice(0, 5) }; },
+  me() { return { name: Profile.name, color: Profile.color, rider: Profile.rider }; },
   send(conn, msg) { try { if (conn && conn.open) conn.send(msg); } catch (e) {} },
   broadcast(msg) { for (const c of this.conns.values()) this.send(c, msg); },
   setStatus(id, t) { const el = $(id); if (el) el.textContent = t; },
@@ -103,7 +103,7 @@ const Net = {
         }
         const pid = 'p' + this.nextId++;
         conn._pid = pid; this.conns.set(pid, conn); this.lastSeen.set(pid, performance.now());
-        const p = { id: pid, name: cleanName(m.name), color: (m.color | 0) % COLORS.length, hats: Hats.clean(m.hats), ready: false, spectate: this.lobby.phase === 'race' };
+        const p = { id: pid, name: cleanName(m.name), color: (m.color | 0) % COLORS.length, rider: cleanRider(m.rider), ready: false, spectate: this.lobby.phase === 'race' };
         this.lobby.players.push(p);
         this.send(conn, { t: 'welcome', id: pid, code: this.code });
         this.broadcastLobby();
@@ -116,7 +116,7 @@ const Net = {
       case 'ready': { const p = this.player(id); if (p) { p.ready = !!m.v; this.broadcastLobby(); } break; }
       case 'profile': {
         const p = this.player(id); if (!p) return;
-        p.name = cleanName(m.name); p.color = (m.color | 0) % COLORS.length; p.hats = Hats.clean(m.hats);
+        p.name = cleanName(m.name); p.color = (m.color | 0) % COLORS.length; p.rider = cleanRider(m.rider);
         this.broadcastLobby(); break;
       }
       case 'in': this.inputs.set(id, { bits: m.b | 0, up: m.u | 0, dn: m.d | 0 }); break;
@@ -147,7 +147,7 @@ const Net = {
   lobbyMsg() {
     const t = TrackStore.get(this.lobby.track) || BUILTIN_TRACKS[0];
     return { t: 'lobby', code: this.code, laps: this.lobby.laps, track: { id: t.id, name: t.name }, phase: this.lobby.phase,
-      players: this.lobby.players.map((p) => ({ id: p.id, name: p.name, color: p.color, hats: p.hats, ready: !!p.ready, bot: !!p.bot, host: !!p.host, spectate: !!p.spectate })) };
+      players: this.lobby.players.map((p) => ({ id: p.id, name: p.name, color: p.color, rider: p.rider, ready: !!p.ready, bot: !!p.bot, host: !!p.host, spectate: !!p.spectate })) };
   },
   broadcastLobby() {
     if (this.role !== 'host') return;
@@ -160,7 +160,7 @@ const Net = {
   },
   startMsg(R, spectate) {
     return { t: 'start', track: R.src, laps: R.laps, spectate: !!spectate,
-      players: R.bikes.map((b) => ({ id: b.id, name: b.name, color: b.color, hats: b.hats, bot: b.bot })) };
+      players: R.bikes.map((b) => ({ id: b.id, name: b.name, color: b.color, rider: b.char, bot: b.bot })) };
   },
   startRace() {
     if (this.role !== 'host') return;
@@ -168,7 +168,7 @@ const Net = {
     if (waiting.length) { toast('Waiting for ' + waiting.map((p) => p.name).join(', ') + ' to be ready'); return; }
     const src = TrackStore.get(this.lobby.track) || BUILTIN_TRACKS[0];
     this.lobby.players.forEach((p) => (p.spectate = false));
-    const players = this.lobby.players.map((p) => ({ id: p.id, name: p.name, color: p.color, hats: p.hats, bot: !!p.bot, skill: p.skill }));
+    const players = this.lobby.players.map((p) => ({ id: p.id, name: p.name, color: p.color, rider: p.rider, bot: !!p.bot, skill: p.skill }));
     const R = new Race({ mode: 'host', track: src, laps: this.lobby.laps, players, localId: 'H',
       inputFor: (b) => (b.id === 'H' ? localInput() : this.inputs.get(b.id) || null) });
     R.onStep = () => this.hostStep(R);
@@ -321,7 +321,7 @@ const Net = {
       const row = document.createElement('div'); row.className = 'pl';
       const dot = document.createElement('span'); dot.className = 'dot'; dot.style.background = (COLORS[p.color] || COLORS[0]).c; row.appendChild(dot);
       const nm = document.createElement('span'); nm.className = 'name'; nm.textContent = p.name + (p.id === this.myId ? ' (you)' : ''); row.appendChild(nm);
-      if (p.hats && p.hats.length) { const c = Hats.stackCanvas(Hats.clean(p.hats)); c.style.height = Math.min(30, c.height * 2) + 'px'; c.style.width = Math.min(30, c.height * 2) * (c.width / c.height) + 'px'; row.appendChild(c); }
+      const pic = bikePortrait((p.color | 0) % COLORS.length, cleanRider(p.rider)); pic.style.height = '38px'; pic.style.width = '40px'; row.appendChild(pic);
       const tag = document.createElement('span'); tag.className = 'tagr';
       if (p.host) { tag.textContent = 'HOST'; tag.classList.add('ready'); }
       else if (p.bot) { tag.textContent = 'CPU'; }
@@ -343,6 +343,7 @@ const Net = {
   },
 };
 
+function cleanRider(r) { return RIDER_IDS.includes(r) ? r : RIDER_IDS[0]; }
 function cleanName(n) { const s = String(n || '').replace(/[^\w .\-!?']/g, '').trim().slice(0, 12); return s || 'Rider'; }
 
 // Bike state squeezed into a small array for snapshots.
@@ -362,7 +363,7 @@ class ClientRace {
   constructor(o) {
     this.local = false; this.mode = 'client';
     this.src = o.track; this.track = compileTrack(o.track); this.laps = o.laps; this.localId = o.localId;
-    this.meta = new Map(o.players.map((p) => [p.id, { name: cleanName(p.name), color: (p.color | 0) % COLORS.length, hats: Hats.clean(p.hats), bot: !!p.bot }]));
+    this.meta = new Map(o.players.map((p) => [p.id, { name: cleanName(p.name), color: (p.color | 0) % COLORS.length, char: cleanRider(p.rider), bot: !!p.bot }]));
     this.snaps = []; this.pending = []; this.phase = 'countdown'; this.cd = 0; this.time = 0; this.results = null;
     this.off = null; this.last = [];
   }
