@@ -16,39 +16,38 @@ const MAX_PIECES = 60;
 //   kick(len, dy)   jump face — gets steeper toward the lip
 //   land(len, dy)   landing — steepest at the top, flattening out at the bottom
 //   bump(len, h)    smooth hump that ends at the same height it started
-//   surf(type, len) flat stretch of mud or a cooling strip
+//   surf(type, len) flat stretch of mud
+// `brakeAbove` is the approach speed above which a jump sends you past its landing
+// (the computer riders brake to stay under it — you can too).
 const PIECES = [
-  { id: 'flat', code: 'f', label: 'Flat', build: (p) => p.line(170, 0) },
-  { id: 'rollers', code: 'r', label: 'Rollers', build: (p) => { p.line(20, 0); for (let i = 0; i < 5; i++) p.bump(48, 9); p.line(20, 0); } },
-  { id: 'whoops', code: 'w', label: 'Whoops', build: (p) => { p.line(30, 0); for (let i = 0; i < 8; i++) p.bump(32, 8); p.line(30, 0); } },
-  { id: 'table', code: 't', label: 'Tabletop', build: (p) => { p.line(70, 0); p.kick(84, 34); p.line(60, 0); p.ease(190, -34); p.line(30, 0); } },
-  { id: 'double', code: 'd', label: 'Double', build: (p) => { p.line(90, 0); p.kick(76, 30); p.line(5, -30); p.line(55, 0); p.line(26, 34); p.land(200, -34); p.line(40, 0); } },
-  { id: 'triple', code: 'T', label: 'Big Triple', build: (p) => { p.line(120, 0); p.kick(90, 40); p.line(6, -40); p.line(70, 0); p.line(30, 40); p.land(210, -40); p.line(50, 0); } },
-  { id: 'stepup', code: 'u', label: 'Step-Up', build: (p) => { p.line(90, 0); p.kick(68, 28); p.line(5, -12); p.line(34, 0); p.line(18, 34); p.line(150, 0); } },
-  { id: 'stepdown', code: 'n', label: 'Step-Down', build: (p) => { p.line(80, 0); p.kick(40, 12); p.line(6, -14); p.ease(300, -90); p.line(50, 0); } },
-  { id: 'hump', code: 'h', label: 'Big Roller', build: (p) => { p.line(30, 0); p.bump(240, 44); p.line(30, 0); } },
-  { id: 'hillup', code: 'U', label: 'Hill Up', build: (p) => p.ease(300, 90) },
-  { id: 'hilldown', code: 'D', label: 'Hill Down', build: (p) => p.ease(300, -90) },
-  { id: 'mud', code: 'm', label: 'Mud', build: (p) => { p.line(20, 0); p.surf('mud', 170); p.line(20, 0); } },
-  { id: 'cooler', code: 'c', label: 'Cooler', build: (p) => { p.line(40, 0); p.surf('cool', 48); p.line(40, 0); } },
+  { id: 'flat', code: 'f', label: 'Flat', build: (p) => p.line(220, 0) },
+  { id: 'rollers', code: 'r', label: 'Rollers', build: (p) => { p.line(30, 0); for (let i = 0; i < 5; i++) p.bump(64, 13); p.line(30, 0); } },
+  { id: 'whoops', code: 'w', label: 'Whoops', build: (p) => { p.line(40, 0); for (let i = 0; i < 9; i++) p.bump(40, 10); p.line(40, 0); } },
+  { id: 'table', code: 't', label: 'Tabletop', brakeAbove: 320, lead: 110, build: (p) => { p.line(110, 0); p.kick(110, 50); p.line(227, 0); p.ease(240, -110); p.line(40, 0); } },
+  { id: 'double', code: 'd', label: 'Double', brakeAbove: 335, lead: 120, build: (p) => { p.line(120, 0); p.kick(104, 46); p.line(7, -46); p.line(182, 0); p.line(36, 52); p.ease(240, -112); p.line(50, 0); } },
+  { id: 'triple', code: 'T', label: 'Big Triple', brakeAbove: 345, lead: 160, build: (p) => { p.line(160, 0); p.kick(124, 62); p.line(8, -62); p.line(142, 0); p.line(42, 68); p.ease(280, -138); p.line(60, 0); } },
+  { id: 'stepup', code: 'u', label: 'Step-Up', lead: 120, build: (p) => { p.line(120, 0); p.kick(96, 44); p.line(7, -18); p.line(50, 0); p.line(24, 54); p.line(260, 0); } },
+  { id: 'stepdown', code: 'n', label: 'Step-Down', brakeAbove: 385, lead: 110, build: (p) => { p.line(110, 0); p.kick(56, 18); p.line(8, -24); p.line(170, 0); p.ease(520, -170); p.line(60, 0); } },
+  { id: 'hump', code: 'h', label: 'Big Roller', build: (p) => { p.line(40, 0); p.ease(160, 64); p.ease(360, -110); p.line(40, 0); } },
+  { id: 'hillup', code: 'U', label: 'Hill Up', build: (p) => p.ease(380, 120) },
+  { id: 'hilldown', code: 'D', label: 'Hill Down', build: (p) => p.ease(380, -120) },
+  { id: 'mud', code: 'm', label: 'Mud', build: (p) => { p.line(30, 0); p.surf('mud', 220); p.line(30, 0); } },
 ];
 const PIECE = Object.fromEntries(PIECES.map((p) => [p.id, p]));
 const PIECE_BY_CODE = Object.fromEntries(PIECES.map((p) => [p.code, p]));
-const SURF = { none: 0, mud: 1, cool: 2 };
+const SURF = { none: 0, mud: 1 };
 
 // ---------- built-in tracks (point to point) ----------
 const BUILTIN_TRACKS = [
   { id: 'meadow', name: 'Meadow Run', diff: 1, pieces: [
-    'flat', 'rollers', 'table', 'hump', 'flat', 'table', 'cooler', 'hillup', 'rollers', 'stepdown', 'table',
-    'hump', 'rollers', 'double', 'flat', 'table', 'cooler', 'hillup', 'hump', 'stepdown', 'rollers', 'table', 'hilldown', 'flat', 'table'] },
+    'flat', 'rollers', 'table', 'hump', 'table', 'hillup', 'rollers', 'stepdown', 'table',
+    'hump', 'double', 'flat', 'table', 'hillup', 'hump', 'stepdown', 'rollers', 'table', 'hilldown', 'table'] },
   { id: 'canyon', name: 'Canyon Rush', diff: 2, pieces: [
-    'flat', 'table', 'rollers', 'double', 'hump', 'whoops', 'cooler', 'stepup', 'double', 'stepdown', 'mud', 'table',
-    'whoops', 'double', 'cooler', 'hillup', 'hump', 'stepdown', 'triple', 'rollers', 'stepup', 'double', 'hilldown',
-    'whoops', 'table', 'cooler', 'double', 'stepdown', 'hump', 'triple'] },
+    'flat', 'table', 'rollers', 'double', 'hump', 'whoops', 'stepup', 'double', 'stepdown', 'mud', 'table',
+    'hillup', 'double', 'hump', 'stepdown', 'triple', 'stepup', 'whoops', 'double', 'triple'] },
   { id: 'ridge', name: 'Thunder Ridge', diff: 3, pieces: [
-    'flat', 'double', 'whoops', 'triple', 'cooler', 'stepup', 'double', 'mud', 'table', 'whoops', 'triple',
-    'stepdown', 'hump', 'double', 'cooler', 'hillup', 'stepup', 'triple', 'whoops', 'stepdown', 'double', 'mud',
-    'double', 'hump', 'cooler', 'triple', 'stepup', 'whoops', 'stepdown', 'double', 'hilldown', 'triple', 'whoops', 'double'] },
+    'flat', 'double', 'whoops', 'triple', 'stepup', 'double', 'mud', 'table', 'triple', 'stepdown',
+    'hump', 'double', 'stepup', 'triple', 'whoops', 'stepdown', 'double', 'mud', 'stepup', 'triple', 'double', 'triple'] },
 ];
 
 // ---------- compiling: pieces -> terrain lookup tables ----------
@@ -72,7 +71,11 @@ function compileTrack(src) {
   P.line(START_RUN, 0);
   const ids = (src.pieces || []).filter((id) => PIECE[id]).slice(0, MAX_PIECES);
   const starts = [];
-  for (const id of ids) { starts.push(hs.length - 1); PIECE[id].build(P); }
+  const zones = [];
+  for (const id of ids) {
+    const x0 = hs.length - 1; starts.push(x0); PIECE[id].build(P);
+    if (PIECE[id].lead && PIECE[id].brakeAbove) zones.push({ x0, x1: x0 + PIECE[id].lead, v: PIECE[id].brakeAbove });
+  }
   starts.push(hs.length - 1);
   const finishX = hs.length - 1 + 50;
   P.line(FINISH_RUN, 0);
@@ -83,7 +86,7 @@ function compileTrack(src) {
   for (const v of hm) { if (v < minY) minY = v; if (v > maxY) maxY = v; }
   // a gently smoothed copy of the ground for the trackside fence
   const fence = blur(blur(hm, 48), 48);
-  return { name: src.name || 'Custom', len, hm, sf: Uint8Array.from(sf), fence, startX: 140, finishX, starts, ids, minY, maxY, src };
+  return { name: src.name || 'Custom', len, hm, sf: Uint8Array.from(sf), fence, startX: 140, finishX, starts, ids, zones, minY, maxY, src };
 }
 function blur(a, r) {
   const n = a.length, out = new Float32Array(n);
@@ -103,8 +106,8 @@ function trackH(T, x) {
 // Slope looking slightly backward — so a rider on a jump lip doesn't "see" the drop behind it.
 function trackSlope(T, x) { return (trackH(T, x) - trackH(T, x - 4)) / 4; }
 function trackSlopeC(T, x) { return (trackH(T, x + 3) - trackH(T, x - 3)) / 6; }
-// The angle a bike sits at, measured under both wheels (24px apart).
-function groundAng(T, x) { return Math.atan2(trackH(T, x + 12) - trackH(T, x - 12), 24); }
+// The angle a bike sits at, measured under both wheels.
+function groundAng(T, x) { return Math.atan2(trackH(T, x + BIKE.half) - trackH(T, x - BIKE.half), BIKE.half * 2); }
 function surfAt(T, x) { const i = Math.round(x); return i < 0 || i > T.len ? 0 : T.sf[i]; }
 function pieceAt(T, x) { for (let i = 0; i < T.ids.length; i++) if (x >= T.starts[i] && x < T.starts[i + 1]) return i; return -1; }
 
@@ -320,7 +323,7 @@ const Editor = {
       const wx = (i / w) * T.len, h = trackH(T, wx);
       const top = y + 2 + Math.round((1 - (h - T.minY) / span) * (hgt - 6));
       const pi = pieceAt(T, wx);
-      ctx.fillStyle = pi === this.sel && pi >= 0 ? '#ffd23f' : surfAt(T, wx) === 1 ? '#5a3418' : surfAt(T, wx) === 2 ? '#7fe8ff' : '#b8743c';
+      ctx.fillStyle = pi === this.sel && pi >= 0 ? '#ffd23f' : surfAt(T, wx) === 1 ? '#5a3418' : '#b8743c';
       ctx.fillRect(x0 + i, top, 1, y + hgt - top);
     }
     const vx = x0 + (this.scroll / T.len) * w, vw = (W / T.len) * w;

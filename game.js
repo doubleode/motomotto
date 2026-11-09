@@ -32,23 +32,22 @@ function mk(w, h) { const c = document.createElement('canvas'); c.width = w; c.h
 // ---------- constants ----------
 const H = 270;
 let W = 480;                 // internal width adapts to the screen shape
-const GROUND_ROW = 196;      // screen row where the camera's height target sits
+const GROUND_ROW = 206;      // screen row where the camera's height target sits
 const STEP = 1 / 60;         // fixed physics step
-const IN = { THR: 1, TUR: 2, BRK: 4, LB: 16, LF: 32 };
+const IN = { THR: 1, BRK: 4, LB: 16, LF: 32 };
 const PHYS = {
-  g: 340,                          // gravity (pixels per second²)
-  accN: 340, vN: 300,              // throttle: pull and top speed on flat ground
-  accT: 470, vT: 370,              // turbo: pull and top speed
-  brake: 480, roll: 14, drag: 0.0005,
+  g: 250,                          // gravity (pixels per second²) — on the floaty side, for big air
+  acc: 300, vMax: 390,             // gas: pull, and the speed where the engine runs out of pull
+  brake: 420, roll: 14, drag: 0.0005,
   pump: 70,                        // lean forward on a downslope = a little extra speed
-  absorb: 12000,                   // lean forward to soak up rollers instead of launching off them
+  absorb: 16000,                   // lean forward to soak up rollers instead of launching off them
   mudDrag: 320, mudMax: 110,
-  pop: 48, scrub: 0.32,            // lean back on a lip to pop higher, forward to scrub low and fast
-  rotRate: 4.8, rotAcc: 12, rotDamp: 2.5,   // spinning the bike in the air
-  assist: 2.0, assistLean: 0.5,    // the bike gently follows its arc through the air
+  pop: 44, scrub: 0.3,             // lean back on a lip to pop higher, forward to scrub low and fast
+  rotRate: 4.6, rotAcc: 12, rotDamp: 2.5,   // spinning the bike in the air
+  assist: 1.8, assistLean: 0.45,   // the bike gently follows its arc through the air
   crashTol: 0.8,                   // land more than ~45° off the slope and you go down
-  perfectTol: 0.18, perfectBoost: 24, flipBoost: 35,
-  heatUp: 26, heatDown: 12, stallTime: 3, crashTime: 2,
+  perfectTol: 0.18, perfectBoost: 24, flipBoost: 40,
+  crashTime: 2,
 };
 const COLORS = [
   { name: 'Red', c: '#e8383b' }, { name: 'Blue', c: '#3b78e8' }, { name: 'Green', c: '#3fbf4a' }, { name: 'Yellow', c: '#f2c230' },
@@ -128,8 +127,8 @@ function text(str, x, y, o = {}) {
 // ---------- input ----------
 const Input = { keys: 0, touch: 0 };
 const KEYMAP = {
-  KeyZ: IN.THR, Space: IN.THR, ArrowUp: IN.THR, KeyW: IN.THR, KeyX: IN.TUR, ShiftLeft: IN.TUR,
-  ArrowDown: IN.BRK, KeyS: IN.BRK, ArrowLeft: IN.LB, KeyA: IN.LB, ArrowRight: IN.LF, KeyD: IN.LF,
+  KeyZ: IN.THR, Space: IN.THR, ArrowUp: IN.THR, KeyW: IN.THR,
+  KeyX: IN.BRK, ArrowDown: IN.BRK, KeyS: IN.BRK, ArrowLeft: IN.LB, KeyA: IN.LB, ArrowRight: IN.LF, KeyD: IN.LF,
 };
 const typing = (e) => { const t = e.target; return t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT'); };
 addEventListener('keydown', (e) => {
@@ -215,15 +214,13 @@ const Sound = {
       case 'land': this.tone(95, 0.12, { type: 'sine', vol: 0.45 * vol, to: 45 }); this.noise(0.12, { vol: 0.15 * vol, f: 900 }); break;
       case 'perfect': this.tone(660, 0.08, { vol: 0.13 * vol }); this.tone(990, 0.14, { vol: 0.13 * vol, delay: 0.07 }); break;
       case 'flip': [523, 659, 784, 1047, 1319].forEach((f, i) => this.tone(f, 0.09, { vol: 0.13 * vol, delay: i * 0.06 })); break;
-      case 'overheat': this.noise(0.9, { vol: 0.3 * vol, f: 4000, fto: 500, ftype: 'bandpass' }); this.tone(320, 0.7, { type: 'sawtooth', vol: 0.12 * vol, to: 70 }); break;
-      case 'cool': this.tone(520, 0.16, { type: 'triangle', vol: 0.18 * vol, to: 1500 }); break;
       case 'finish': [523, 659, 784, 1047].forEach((f, i) => this.tone(f, i === 3 ? 0.4 : 0.12, { vol: 0.16 * vol, delay: i * 0.11 })); break;
       case 'pop': this.tone(900, 0.06, { vol: 0.1 * vol, to: 1700 }); break;
       case 'bonk': this.tone(320, 0.05, { vol: 0.06 * vol, to: 200 }); break;
       case 'click': this.tone(700, 0.04, { vol: 0.06 * vol }); break;
     }
   },
-  engine(v, turbo, on) {
+  engine(v, gas, on) {
     const ac = this.ac; if (!ac) return;
     if (!this.eng) {
       const o1 = ac.createOscillator(), o2 = ac.createOscillator(), lfo = ac.createOscillator();
@@ -238,12 +235,12 @@ const Sound = {
       this.eng = { o1, o2, lfo, f, g };
     }
     const e = this.eng, t = ac.currentTime;
-    const base = 40 + v * 0.36 + (turbo ? 14 : 0);
+    const base = 38 + v * 0.34 + (gas ? 8 : 0);
     e.o1.frequency.setTargetAtTime(base, t, 0.06);
     e.o2.frequency.setTargetAtTime(base * 0.5, t, 0.06);
     e.lfo.frequency.setTargetAtTime(base * 0.25, t, 0.06);
     e.f.frequency.setTargetAtTime(500 + v * 4.5, t, 0.08);
-    e.g.gain.setTargetAtTime(on ? 0.09 + (turbo ? 0.03 : 0) : 0, t, 0.05);
+    e.g.gain.setTargetAtTime(on ? (gas ? 0.11 : 0.06) : 0, t, 0.05);
   },
   engineOff() { if (this.eng) this.eng.g.gain.setTargetAtTime(0, this.ac.currentTime, 0.05); },
 };
@@ -261,14 +258,14 @@ function newBike(p) {
     id: p.id, name: p.name, color: p.color | 0, char: p.char || 'ace', bot: !!p.bot, skill: p.skill || 0.7,
     x: 0, y: 0, s: 0, vx: 0, vy: 0, air: false, ang: 0, om: 0, wh: 0, lean: 0,
     heat: 0, state: 'ride', st: 0, inv: 0, finished: false, finishTime: 0, place: 0,
-    airT: 0, rot: 0, combo: 0, turbo: false, input: 0, ai: null,
+    airT: 0, rot: 0, combo: 0, gas: false, input: 0, ai: null,
     rider: { x: 0, y: 0, vx: 0, vy: 0, rot: 0, ph: 0, flip: 0 },
     px: 0, py: 0, pang: 0, pwh: 0, prx: 0, pry: 0, prr: 0,
   };
 }
 function placeBike(b, T, x) {
   Object.assign(b, { x, y: trackH(T, x), s: 0, vx: 0, vy: 0, air: false, ang: groundAng(T, x), om: 0, wh: 0, heat: 0, state: 'ride',
-    st: 0, inv: 0, finished: false, finishTime: 0, place: 0, airT: 0, rot: 0, combo: 0, turbo: false });
+    st: 0, inv: 0, finished: false, finishTime: 0, place: 0, airT: 0, rot: 0, combo: 0, gas: false });
   b.px = b.x; b.py = b.y; b.pang = b.ang; b.pwh = 0; b.prx = b.rider.x = x; b.pry = b.rider.y = b.y; b.prr = 0;
   return b;
 }
@@ -281,34 +278,22 @@ function stepBike(b, dt, R) {
   const inp = racing && !b.finished ? b.input : 0;
   const L = (inp & IN.LB ? 1 : 0) - (inp & IN.LF ? 1 : 0);
   b.lean = L;
-  const engine = racing && b.state === 'ride' && !b.finished;
-  const tur = engine && !b.air && !!(inp & IN.TUR);
-  const thr = engine && (tur || !!(inp & IN.THR));
-  b.turbo = tur;
-
-  // engine heat
-  if (b.state === 'stall') { b.st -= dt; if (b.st <= 0) { b.state = 'ride'; b.heat = 0; } }
-  else if (racing) {
-    if (tur) b.heat += PHYS.heatUp * dt; else b.heat -= PHYS.heatDown * dt;
-    b.heat = clamp(b.heat, 0, 100);
-    if (b.heat >= 100 && !b.finished) { b.state = 'stall'; b.st = PHYS.stallTime; R.ev('overheat', b); }
-  }
-
+  const thr = racing && b.state === 'ride' && !b.finished && !!(inp & IN.THR);
+  b.gas = thr && !b.air;
   if (b.air) airStep(b, dt, R, L);
-  else groundStep(b, dt, R, L, thr, tur, inp);
+  else groundStep(b, dt, R, L, thr, inp);
   if (b.state === 'crash') return;
 
-  if (!b.air && surfAt(T, b.x) === SURF.cool && b.heat > 0 && !b.finished) { if (b.heat > 8) R.ev('cool', b); b.heat = 0; }
   if (racing && !b.finished && b.x >= T.finishX) {
     b.finished = true; b.finishTime = R.time; b.place = R.placeFor(b); R.ev('finish', b, b.place);
   }
 }
 
-function groundStep(b, dt, R, L, thr, tur, inp) {
+function groundStep(b, dt, R, L, thr, inp) {
   const T = R.track;
   const th = Math.atan(trackSlope(T, b.x));
   let a = 0;
-  if (thr) { const cap = tur ? PHYS.vT : PHYS.vN, acc = tur ? PHYS.accT : PHYS.accN; if (b.s < cap) a += acc * (1 - Math.max(0, b.s) / cap); }
+  if (thr && b.s < PHYS.vMax) a += PHYS.acc * (1 - Math.max(0, b.s) / PHYS.vMax);
   const braking = !!(inp & IN.BRK) || b.finished;
   if (braking) a -= Math.sign(b.s) * (b.finished ? 220 : PHYS.brake);
   a -= PHYS.g * Math.sin(th);
@@ -389,7 +374,7 @@ function landBike(b, R, g1) {
   if (airT < 0.12) return;
   const flips = Math.abs(rot) > 5.2 ? Math.max(1, Math.round(Math.abs(rot) / TAU)) : 0;
   if (flips && b.state !== 'crash' && !b.finished) {
-    b.s += PHYS.flipBoost * flips; b.heat = 0; b.combo++;
+    b.s += PHYS.flipBoost * flips; b.combo++;
     R.ev('flip', b, rot > 0 ? flips : -flips);
   } else if (d < PHYS.perfectTol && airT > 0.35 && tt < -0.1 && !b.finished) {
     b.combo++; b.s += PHYS.perfectBoost; R.ev('perfect', b, b.combo);
@@ -398,9 +383,9 @@ function landBike(b, R, g1) {
 }
 
 function crashBike(b, R, vx, vy) {
-  b.state = 'crash'; b.st = 0; b.turbo = false; b.combo = 0; b.wh = 0;
+  b.state = 'crash'; b.st = 0; b.gas = false; b.combo = 0; b.wh = 0;
   const r = b.rider;
-  Object.assign(r, { x: b.x, y: b.y + 18, vx: Math.max(30, vx * 0.7 + 30), vy: Math.max(70, Math.abs(vy) * 0.25 + 70), rot: 0, ph: 0, flip: 0 });
+  Object.assign(r, { x: b.x, y: b.y + 24, vx: Math.max(30, vx * 0.7 + 30), vy: Math.max(70, Math.abs(vy) * 0.25 + 70), rot: 0, ph: 0, flip: 0 });
   // the bike cartwheels on down the track
   b.air = true; b.vx = vx * 0.55; b.vy = 60 + Math.abs(vy) * 0.1; b.om = (Math.random() < 0.5 ? -1 : 1) * 7;
   b.y = trackH(R.track, b.x) + 1;
@@ -454,14 +439,12 @@ function predictLanding(b, T) {
   return { tt: 0, t: 5 };
 }
 function aiControl(b, R) {
-  if (!b.ai) b.ai = { err: 0, cool: false, wasAir: false, tick: 0, lean: 0 };
+  if (!b.ai) b.ai = { err: 0, wasAir: false, tick: 0, lean: 0 };
   const A = b.ai, T = R.track;
   if (R.phase !== 'race' || b.finished || b.state === 'crash') { b.input = 0; return; }
   let bits = IN.THR;
-  const lim = 40 + b.skill * 45;
-  if (b.heat > lim) A.cool = true;
-  if (b.heat < 15) A.cool = false;
-  if (!A.cool && b.state === 'ride') bits |= IN.TUR;
+  // ease off before jumps we'd sail clean over (sloppier riders brake a bit late)
+  if (!b.air) for (const z of T.zones) if (b.x >= z.x0 && b.x < z.x1 && b.s > z.v * (0.97 + (1 - b.skill) * 0.1)) { bits = IN.BRK; break; }
   if (b.air) {
     if (!A.wasAir) {
       A.wasAir = true; A.tick = 0;
@@ -496,13 +479,13 @@ const num = (v) => (typeof v === 'number' && isFinite(v) ? v : 0);
 function packBike(b) {
   const r = b.rider, c = b.state === 'crash';
   return [r1(b.x), r1(b.y), r2(b.ang), r2(b.wh), Math.round(b.s), STATES.indexOf(b.state), Math.round(b.heat), b.finished ? r2(b.finishTime) || 0.01 : 0,
-    b.lean, (b.air ? 1 : 0) | (b.turbo ? 2 : 0) | (b.inv > 0 ? 4 : 0), c ? r1(r.x) : 0, c ? r1(r.y) : 0, c ? r2(r.rot) : 0, c ? r.ph : 0, r.flip ? 1 : 0];
+    b.lean, (b.air ? 1 : 0) | (b.gas ? 2 : 0) | (b.inv > 0 ? 4 : 0), c ? r1(r.x) : 0, c ? r1(r.y) : 0, c ? r2(r.rot) : 0, c ? r.ph : 0, r.flip ? 1 : 0];
 }
 function unpackBike(a) {
   if (!Array.isArray(a)) return null;
   const n = (i) => num(a[i]);
   return { x: n(0), y: n(1), ang: n(2), wh: n(3), s: n(4), state: STATES[n(5)] || 'ride', heat: n(6), finished: n(7) > 0, finishTime: n(7),
-    lean: clamp(n(8), -1, 1), air: !!(n(9) & 1), turbo: !!(n(9) & 2), inv: n(9) & 4 ? 1 : 0,
+    lean: clamp(n(8), -1, 1), air: !!(n(9) & 1), gas: !!(n(9) & 2), inv: n(9) & 4 ? 1 : 0,
     rider: { x: n(10), y: n(11), rot: n(12), ph: n(13), flip: n(14) } };
 }
 const INTERP = 0.11;
@@ -587,7 +570,7 @@ class Race {
     const humansDone = humans.length > 0 && humans.every((e) => e.finished);
     if (humansDone && this.humansDoneAt < 0) this.humansDoneAt = this.time;
     const wait = this.mode === 'test' ? 1.2 : 3;
-    if (fin.length === E.length || (humansDone && this.time - this.humansDoneAt > wait) || (this.firstFinish >= 0 && this.time - this.firstFinish > 30) || !humans.length) this.end();
+    if (fin.length === E.length || (humansDone && this.time - this.humansDoneAt > wait) || (this.firstFinish >= 0 && this.time - this.firstFinish > 40) || !humans.length) this.end();
   }
   end() {
     this.phase = 'done';
@@ -605,7 +588,7 @@ class Race {
         id: b.id, name: b.name, color: b.color, char: b.char, bot: b.bot,
         x: jump ? b.x : lerp(b.px, b.x, alpha), y: jump ? b.y : lerp(b.py, b.y, alpha),
         ang: b.pang + wrapA(b.ang - b.pang) * alpha, wh: lerp(b.pwh, b.wh, alpha),
-        s: b.s, state: b.state, air: b.air, turbo: b.turbo, inv: b.inv, lean: b.lean, heat: b.heat, finished: b.finished, finishTime: b.finishTime,
+        s: b.s, state: b.state, air: b.air, gas: b.gas, inv: b.inv, lean: b.lean, heat: b.heat, finished: b.finished, finishTime: b.finishTime,
         rider: { x: lerp(b.prx, b.rider.x, alpha), y: lerp(b.pry, b.rider.y, alpha), rot: lerp(b.prr, b.rider.rot, alpha), ph: b.rider.ph, flip: b.rider.flip },
       });
     }
@@ -659,7 +642,7 @@ function updateParticles(dt, T) {
   }
 }
 // where the rear tyre touches the ground, in the world
-function rearContact(vb) { const a = vb.ang; return { x: vb.x - 12 * Math.cos(a), y: vb.y - 12 * Math.sin(a) }; }
+function rearContact(vb) { const a = vb.ang; return { x: vb.x - BIKE.half * Math.cos(a), y: vb.y - BIKE.half * Math.sin(a) }; }
 function updateRS(vbs, T, dt, localId) {
   for (const vb of vbs) {
     const rs = rsOf(vb.id);
@@ -678,25 +661,21 @@ function updateRS(vbs, T, dt, localId) {
     rs.state = vb.state;
     rs.sqv += (-260 * rs.sq - 16 * rs.sqv) * dt; rs.sq += rs.sqv * dt;
     if (!vb.air && vb.state !== 'crash' && Math.abs(vb.s) > 30) {
-      rs.dustT -= dt * (vb.turbo ? 2.4 : 1) * (Math.abs(vb.s) / 180);
+      rs.dustT -= dt * (vb.gas ? 1.8 : 0.5) * (Math.abs(vb.s) / 180);
       if (rs.dustT <= 0) {
         rs.dustT = 0.035;
         const rc = rearContact(vb), mud = surfAt(T, rc.x) === SURF.mud;
-        const sp = vb.turbo ? 1.4 : 1;
-        part(rc.x - 4, rc.y + 2, -vb.s * 0.25 * sp + rnd(-20, 20), rnd(20, 70) * sp, rnd(0.25, 0.5), mud ? '#4e2c14' : Math.random() < 0.5 ? '#d8a46a' : '#c4884e', { sz: vb.turbo && Math.random() < 0.5 ? 2 : 1 });
+        const sp = vb.gas ? 1.2 : 0.8;
+        part(rc.x - 4, rc.y + 2, -vb.s * 0.25 * sp + rnd(-20, 20), rnd(20, 70) * sp, rnd(0.25, 0.5), mud ? '#4e2c14' : Math.random() < 0.5 ? '#d8a46a' : '#c4884e', { sz: vb.gas && Math.random() < 0.4 ? 2 : 1 });
       }
     }
     if (vb.state !== 'crash') {
-      rs.smokeT -= dt * (vb.turbo ? 3 : 0.8);
+      rs.smokeT -= dt * (vb.gas ? 1.6 : 0.6);
       if (rs.smokeT <= 0) {
         rs.smokeT = 0.12;
-        const a = vb.ang, ex = vb.x - 16 * Math.cos(a) - 12 * Math.sin(a), ey = vb.y - 16 * Math.sin(a) + 12 * Math.cos(a);
-        part(ex, ey, -30 + rnd(-10, 10), rnd(5, 20), rnd(0.3, 0.6), vb.turbo ? '#8a8a9a' : '#c8c8d0', { g: -20, sz: vb.turbo ? 2 : 1 });
+        const a = vb.ang, ex = vb.x - 25 * Math.cos(a) - 18 * Math.sin(a), ey = vb.y - 25 * Math.sin(a) + 18 * Math.cos(a);
+        part(ex, ey, -30 + rnd(-10, 10), rnd(5, 20), rnd(0.3, 0.6), '#c8c8d0', { g: -20, sz: vb.gas && Math.random() < 0.5 ? 2 : 1 });
       }
-    }
-    if (vb.state === 'stall' || (vb.heat > 80 && vb.state === 'ride')) {
-      rs.steamT -= dt;
-      if (rs.steamT <= 0) { rs.steamT = vb.state === 'stall' ? 0.05 : 0.14; part(vb.x + rnd(-4, 4), vb.y + 18, rnd(-10, 10), rnd(25, 45), rnd(0.5, 0.9), Math.random() < 0.5 ? '#f4f2e8' : '#c8c8d0', { g: -10, sz: 2 }); }
     }
   }
 }
@@ -797,7 +776,6 @@ const SURF_PAL = {
 };
 function drawTerrain(T, camX, camY, now) {
   if (BG.dirt.setTransform) { try { BG.dirt.setTransform(new DOMMatrix([1, 0, 0, 1, -mod(camX, 64), mod(GROUND_ROW + camY, 48)])); } catch (e) {} }
-  const glow = (now * 6) | 0;
   for (let sx = 0; sx < W; sx++) {
     const wx = camX + sx, i = clamp(wx, 0, T.len);
     const h = T.hm[i], top = GROUND_ROW - Math.round(h) + camY;
@@ -805,10 +783,6 @@ function drawTerrain(T, camX, camY, now) {
     ctx.fillStyle = BG.dirt; ctx.fillRect(sx, top + 9, 1, H - top);
     ctx.fillStyle = '#93542a'; ctx.fillRect(sx, top + 4, 1, 5);
     const sf = T.sf[i];
-    if (sf === SURF.cool) {
-      ctx.fillStyle = ((wx >> 2) + glow) & 1 ? '#7fe8ff' : '#d8f8ff'; ctx.fillRect(sx, top, 1, 4);
-      continue;
-    }
     const P = SURF_PAL[sf] || SURF_PAL[0];
     const sl = T.hm[Math.min(T.len, i + 2)] - T.hm[Math.max(0, i - 2)];
     ctx.fillStyle = sl > 0.5 ? P.lit : sl < -0.5 ? P.shade : P.mid; ctx.fillRect(sx, top + 1, 1, 3);
@@ -857,12 +831,12 @@ function drawBike(vb, T, camX, camY, now, ghostAlpha) {
   if (sx > -60 && sx < W + 60) {
     const gh = trackH(T, vb.x), air = vb.y - gh;
     if (air > 3) {
-      const sw = Math.max(8, 30 - air * 0.2);
+      const sw = Math.max(10, 40 - air * 0.2);
       ctx.fillStyle = 'rgba(20,12,28,0.3)'; ctx.fillRect(Math.round(sx - sw / 2), wsy(gh, camY) - 1, Math.round(sw), 3);
     }
     ctx.save();
     ctx.translate(Math.round(sx), Math.round(sy)); ctx.rotate(-vb.ang);
-    if (vb.wh > 0.01) { ctx.translate(-12, 0); ctx.rotate(-vb.wh); ctx.translate(12, 0); }
+    if (vb.wh > 0.01) { ctx.translate(-BIKE.half, 0); ctx.rotate(-vb.wh); ctx.translate(BIKE.half, 0); }
     drawBikeArt(ctx, art, (rs.wr | 0) & 1, Math.round(clamp(rs.sq, 0, 3)), vb.state !== 'crash', vb.state === 'crash' ? 0 : vb.lean);
     ctx.restore();
   }
@@ -870,8 +844,8 @@ function drawBike(vb, T, camX, camY, now, ghostAlpha) {
     const r = vb.rider, rx = Math.round(r.x - camX), ry = wsy(r.y, camY);
     if (rx > -30 && rx < W + 30) {
       ctx.save();
-      if (r.ph <= 1) { const sp = art.tumble; ctx.translate(rx, ry - 7); ctx.rotate(-r.rot); ctx.drawImage(sp, -(sp.width >> 1), -(sp.height >> 1)); }
-      else { const sp = art.run[r.ph === 2 ? (now * 10 | 0) & 1 : 1]; ctx.translate(rx, ry); if (r.flip) ctx.scale(-1, 1); ctx.drawImage(sp, -(sp.width >> 1), -sp.height + 1); }
+      if (r.ph <= 1) { ctx.translate(rx, ry - 10); ctx.rotate(-r.rot); blit(ctx, art.tumble, 0, 0); }
+      else { ctx.translate(rx, ry); if (r.flip) ctx.scale(-1, 1); blit(ctx, art.run[r.ph === 2 ? (now * 10 | 0) & 1 : 0], 0, 0); }
       ctx.restore();
     }
   }
@@ -885,7 +859,7 @@ function drawTags(vbs, me, camX, camY) {
     const sx = Math.round(vb.x - camX);
     if (sx < -20 || sx > W + 20) continue;
     const name = vb.name.slice(0, 10).toUpperCase(), w = name.length * 4 + 7;
-    let x0 = sx - (w >> 1), y = wsy(vb.state === 'crash' ? vb.rider.y : vb.y, camY) - 46;
+    let x0 = sx - (w >> 1), y = wsy(vb.state === 'crash' ? vb.rider.y : vb.y, camY) - 62;
     for (let k = 0; k < 6 && placed.some((r) => x0 < r.x + r.w && x0 + w > r.x && y < r.y + 9 && y + 9 > r.y); k++) y -= 9;
     placed.push({ x: x0, y, w });
     ctx.fillStyle = 'rgba(20,12,28,0.7)'; ctx.fillRect(x0, y - 1, w, 8);
@@ -942,14 +916,12 @@ function drawHUD(R, vbs, me, now, camX, camY) {
     text(me.finished ? 'DONE' : m + 'M TO GO', 48, 4, { c: '#c8c8d0' });
   }
   text(fmtTime(me && me.finished ? me.finishTime : R.time), W / 2, 4, { a: 'c', c: '#6fe3ff' });
-  if (me) {
-    const hx = W - 92, hot = me.heat > 85, stall = me.state === 'stall';
-    text(stall ? 'STALL' : 'TEMP', hx - 4, 4, { a: 'r', c: stall || hot ? ((now * 6) | 0) & 1 ? '#e8383b' : '#ffd23f' : '#c8c8d0' });
-    ctx.fillStyle = '#140c1c'; ctx.fillRect(hx, 3, 82, 7);
-    ctx.fillStyle = '#3a3a4e'; ctx.fillRect(hx + 1, 4, 80, 5);
-    ctx.fillStyle = me.heat < 60 ? '#46c84a' : me.heat < 85 ? '#ffd23f' : '#e8383b';
-    if (!(hot && ((now * 8) | 0) & 1)) ctx.fillRect(hx + 1, 4, Math.round((me.heat / 100) * 80), 5);
-    for (let k = 1; k < 8; k++) { ctx.fillStyle = '#140c1c'; ctx.fillRect(hx + 1 + k * 10, 4, 1, 5); }
+  if (me) {   // speedometer (16 pixels = 1 metre)
+    const mph = Math.round((Math.abs(me.s) / 16) * 2.237), f = clamp(Math.abs(me.s) / PHYS.vMax, 0, 1);
+    text(mph + ' MPH', W - 66, 4, { a: 'r', c: '#f4f2e8' });
+    ctx.fillStyle = '#140c1c'; ctx.fillRect(W - 62, 3, 58, 7);
+    ctx.fillStyle = '#3a3a4e'; ctx.fillRect(W - 61, 4, 56, 5);
+    ctx.fillStyle = f < 0.6 ? '#46c84a' : f < 0.85 ? '#ffd23f' : '#ff8a2a'; ctx.fillRect(W - 61, 4, Math.round(f * 56), 5);
   }
   // standings
   panel(W - 70, 15, 70, ranked.length * 7 + 3);
@@ -1019,10 +991,8 @@ function handleEvent(ev, R) {
     case 'land': if (me && ev.a > 50) Sound.play('land', clamp(ev.a / 260, 0.25, 1)); break;
     case 'perfect': if (me) { Sound.play('perfect'); flash(ev.a > 1 ? 'PERFECT X' + ev.a : 'PERFECT!', '#ffd23f', 0.9); } break;
     case 'flip':
-      if (me) { Sound.play('flip'); const n = Math.abs(ev.a); flash((n > 1 ? (n === 2 ? 'DOUBLE ' : n + 'X ') : '') + (ev.a > 0 ? 'BACKFLIP!' : 'FRONTFLIP!'), '#ff8fc8', 1.5, 'ENGINE COOLED'); }
+      if (me) { Sound.play('flip'); const n = Math.abs(ev.a); flash((n > 1 ? (n === 2 ? 'DOUBLE ' : n + 'X ') : '') + (ev.a > 0 ? 'BACKFLIP!' : 'FRONTFLIP!'), '#ff8fc8', 1.5, 'SPEED BOOST'); }
       break;
-    case 'overheat': if (me) { Sound.play('overheat'); flash('OVERHEAT!', '#e8383b', 1.6); } break;
-    case 'cool': if (me) { Sound.play('cool'); flash('COOLED!', '#6fe3ff', 0.7); } break;
     case 'finish': if (me) { Sound.play('finish'); flash('FINISH! ' + ordinal(ev.a), '#ffd23f', 3); } break;
     case 'done': App.raceDone(R); break;
   }
@@ -1176,11 +1146,11 @@ const App = {
   },
   // camera: your bike sits left of centre (further left at speed); height blends the ground here and ahead
   follow(b, T, dt, snap) {
-    const frac = clamp(Math.abs(b.s) / PHYS.vT, 0, 1);
+    const frac = clamp(Math.abs(b.s) / PHYS.vMax, 0, 1);
     this.lead = snap ? 150 : this.lead + (150 - frac * 45 - this.lead) * Math.min(1, dt * 2);
     this.camX = b.x - this.lead;
     let ty = (trackH(T, b.x) + trackH(T, b.x + 140)) / 2 + 12;
-    if (b.y - ty > 125) ty = b.y - 125;
+    if (b.y - ty > 112) ty = b.y - 112;
     this.camY = snap ? ty : this.camY + (ty - this.camY) * Math.min(1, dt * 5);
   },
 
@@ -1214,7 +1184,7 @@ const App = {
       const me = vbs.find((b) => b.id === R.localId);
       const target = me || [...vbs].sort(byPos)[0];
       if (target) this.follow(target, R.track, dt, false);
-      if (me && !this.paused && R.phase !== 'done') Sound.engine(me.state === 'crash' ? 0 : Math.abs(me.s), me.turbo, me.state === 'ride');
+      if (me && !this.paused && R.phase !== 'done') Sound.engine(me.state === 'crash' ? 0 : Math.abs(me.s), me.gas, me.state === 'ride');
       else Sound.engineOff();
       if (this.msg) this.msg.life -= dt;
       if (this.doneT > 0) { this.doneT -= dt; if (this.doneT <= 0 && !this.resultsShown) this.showResults(this.doneRace); }

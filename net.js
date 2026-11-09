@@ -16,7 +16,7 @@
                       results, tolobby, bye
    ===================================================================== */
 
-const PEER_PREFIX = 'hattrickmoto-v3-';   // bump when messages change so old copies can't join
+const PEER_PREFIX = 'hattrickmoto-v4-';   // bump when messages change so old copies can't join
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 const MAX_PLAYERS = 6;
 const SEND_EVERY = 3;                     // physics steps between updates (60/3 = 20 per second)
@@ -207,7 +207,7 @@ const Net = {
     const timer = setTimeout(() => fail('Could not reach room ' + code + '. Check the code and that the host is still in the lobby.'), 15000);
     peer.on('open', () => {
       const conn = (this.conn = peer.connect(PEER_PREFIX + code, { serialization: 'json', reliable: true }));
-      conn.on('open', () => { clearTimeout(timer); this.hostSeen = performance.now(); this.send(conn, { t: 'hello', v: 3, ...this.me() }); });
+      conn.on('open', () => { clearTimeout(timer); this.hostSeen = performance.now(); this.send(conn, { t: 'hello', v: 4, ...this.me() }); });
       conn.on('data', (m) => { this.hostSeen = performance.now(); this.clientMsg(m); });
       conn.on('close', () => this.hostGone('The host closed the room.'));
       conn.on('error', () => this.hostGone('Lost connection to the host.'));
@@ -328,7 +328,7 @@ const Net = {
     const list = $('lb-players'); list.innerHTML = '';
     for (const p of L.players) {
       const row = document.createElement('div'); row.className = 'pl';
-      const pic = bikePortrait((p.color | 0) % COLORS.length, cleanRider(p.char)); pic.style.height = '38px'; pic.style.width = '40px'; row.appendChild(pic);
+      const pic = bikePortrait((p.color | 0) % COLORS.length, cleanRider(p.char)); pic.style.height = '45px'; pic.style.width = '46px'; row.appendChild(pic);
       const nm = document.createElement('span'); nm.className = 'name'; nm.textContent = cleanName(p.name) + (p.id === this.myId ? ' (you)' : ''); row.appendChild(nm);
       const tag = document.createElement('span'); tag.className = 'tagr';
       if (p.host) { tag.textContent = 'HOST'; tag.classList.add('ready'); }

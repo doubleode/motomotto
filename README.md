@@ -2,7 +2,7 @@
 
 **Play it:** https://doubleode.github.io/motomotto/ (after GitHub Pages is turned on — see below)
 
-A flowing side-scrolling pixel motocross racer for the browser. Ride rolling dirt, launch off tabletops, doubles and big triples, spin the bike in the air to land on the downslope and keep your speed — and race up to 6 friends online as ghosts. Pick from six riders and eight bike colors.
+A flowing side-scrolling pixel motocross racer for the browser. Ride rolling dirt, launch off big tabletops, doubles and triples for long airtime, lean the bike to land on the downslope and keep your speed — and race up to 6 friends online as ghosts. You pick your own speed with the gas and the brake. Pick from six riders and eight bike colors.
 
 Everything (art, sound, names) is original and drawn or synthesized in code. There are no image or sound files.
 
@@ -82,9 +82,8 @@ Good to know:
 
 | Action | Keyboard | Phone (hold sideways) |
 |---|---|---|
-| Throttle | **Z**, Space, or **↑** | **GAS** (right side) |
-| Turbo | **X** | **TURBO** (right side) |
-| Brake | **↓** | **BRAKE** (right side) |
+| Gas | **Z**, Space, or **↑** (or W) | **GAS** (big button, right side) |
+| Brake | **X** or **↓** (or S) | **BRAKE** (right side) |
 | Lean back | **←** (or A) | **BACK** (left side) |
 | Lean forward | **→** (or D) | **FWD** (left side) |
 | Pause / menu | **Esc** | **II** button |
@@ -95,13 +94,14 @@ On phones the game asks to go fullscreen when a race starts. Turn the phone side
 
 Races go from the start gate to the finish line. The whole game is about **flow** — keeping your speed through the dirt.
 
+- **Pick your speed.** Hold **GAS** to go faster, let go to coast, and squeeze the **BRAKE** to slow down. The **MPH** gauge in the top corner shows how fast you're going.
+- **Big air.** The jumps are big — a good hit gives you around two seconds in the air. Too slow and you'll come up short and "case" the jump; too fast (especially after a downhill) and you'll overshoot the landing onto the flat. Tap the brake before a jump if you're carrying too much speed.
 - **Gravity matters.** Rolling downhill speeds you up; climbing slows you down.
 - **Landings are everything.** In the air, lean to spin the bike. Land with your wheels lined up with the slope — ideally on the *downside* of a jump — and you keep your speed. A lined-up landing on a downslope is a **PERFECT** and gives you a boost (chain them for a combo). Land flat and you lose speed. Land way off and you crash.
 - **Pop and scrub.** Lean **back** as you leave a jump to pop higher. Lean **forward** at the lip to stay low and fast.
 - **Rollers and whoops.** Hit them neutral and they'll buck you into the air. Lean **forward** to soak them up and stay glued to the ground.
 - **Wheelies.** Lean back on the ground with the gas on.
-- **Flips!** Spin a full backflip or frontflip and land it to get a speed boost — and it cools your engine completely.
-- **Turbo** is faster but heats your engine. If the **TEMP** gauge fills up, you stall for 3 seconds. Ride over a **blue cooling strip** to reset it. Watch out: too much speed can make you overshoot a landing onto the flat.
+- **Flips!** Spin a full backflip or frontflip and land it to get a speed boost.
 - **Mud** slows you down.
 - When you crash, your rider tumbles, runs back to the bike, and hops on after about 2 seconds.
 
@@ -113,10 +113,10 @@ Open **Garage** from the title screen to set your name, pick a bike color, and c
 
 ## Tracks and the editor
 
-Three built-in tracks: **Meadow Run** (easy, about 30 seconds), **Canyon Rush** (medium, about 45), **Thunder Ridge** (hard, about 55).
+Three built-in tracks: **Meadow Run** (easy, about 45 seconds), **Canyon Rush** (medium, about 50), **Thunder Ridge** (hard, about 60).
 
 **Track Editor** — tracks are built from pieces, like snapping blocks together:
-- Tap a piece on the toolbar to add it **after the highlighted piece**: Flat, Rollers, Whoops, Tabletop, Double, Big Triple, Step-Up, Step-Down, Big Roller, Hill Up, Hill Down, Mud, Cooler.
+- Tap a piece on the toolbar to add it **after the highlighted piece**: Flat, Rollers, Whoops, Tabletop, Double, Big Triple, Step-Up, Step-Down, Big Roller, Hill Up, Hill Down, Mud.
 - Tap a piece on the track to highlight it. **&lt; / &gt;** move it earlier or later, **Remove** deletes it, **Undo** takes back your last change.
 - Scroll by dragging the track, with the arrow keys, your mouse wheel, or by tapping the mini-map at the bottom.
 - **Test Ride** rides the whole track. **Ride from here** starts you just before the highlighted piece — handy for practicing one jump.
@@ -133,15 +133,15 @@ Saved tracks and your rider live in your browser's storage. Clearing your browse
 | File | What it does |
 |---|---|
 | `index.html` | The page: menus, lobby, Garage, editor buttons, touch controls, and styles. |
-| `game.js` | The game engine: bike physics, jumps, landings, heat, crashes, computer riders, ghosts, drawing, sound, HUD, and the main loop. |
+| `game.js` | The game engine: bike physics, jumps, landings, gas and brake, crashes, computer riders, ghosts, drawing, sound, HUD, and the main loop. |
 | `net.js` | Online multiplayer: hosting, joining, the lobby, and keeping everyone's race in sync. |
 | `art.js` | The pixel-art helper, the bike and rider sprites, the six riders, and the Garage screen. |
 | `tracks.js` | Track pieces, the three built-in tracks, turning pieces into terrain, and the track editor. |
 
 ### For tinkerers
-- Physics numbers (speed, gravity, spin speed, landing tolerance, heat rate) are in the `PHYS` table near the top of `game.js`. `crashTol` makes landings more or less forgiving.
-- Jump shapes are in `PIECES` in `tracks.js` — each piece is a few segments like `kick(84, 34)` (a jump face 84 pixels long and 34 tall). Built-in tracks in `BUILTIN_TRACKS` are just lists of piece names.
-- Bikes and riders are drawn as rows of letters in `art.js` (`BIKE_ROWS`, `RIDER_ROWS`). Each letter is a color; `.` is see-through; the black outline is added automatically. New riders go in the `RIDERS` list, and helmet designs in `HELMETS`.
+- Physics numbers (speed, gravity, spin speed, landing tolerance, top speed `vMax`, brake strength) are in the `PHYS` table near the top of `game.js`. `crashTol` makes landings more or less forgiving.
+- Jump shapes are in `PIECES` in `tracks.js` — each piece is a few segments like `kick(104, 46)` (a jump face 104 pixels long and 46 tall). Built-in tracks in `BUILTIN_TRACKS` are just lists of piece names.
+- Bikes and riders are drawn with simple shapes (lines, circles, polygons) snapped to a pixel grid in `art.js` — `paintBike` draws the bike, `paintRiderOnBike` the rider (the knees and elbows bend automatically), and the black outline is added for you. New riders go in the `RIDERS` list.
 - Testing online play with your own signaling server: run a PeerJS server and add `?peer=localhost:9000` to the address.
 
 Online play uses [PeerJS](https://peerjs.com/) (MIT license), loaded from the jsDelivr CDN.
