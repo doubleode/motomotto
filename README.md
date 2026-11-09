@@ -2,7 +2,7 @@
 
 **Play it:** https://doubleode.github.io/motomotto/ (after GitHub Pages is turned on — see below)
 
-A fast side-scrolling pixel motocross racer for the browser. Race up to 6 friends online, launch off big jumps, steer your bike through the air, and keep your engine from overheating. Pick from six riders and eight bike colors.
+A flowing side-scrolling pixel motocross racer for the browser. Ride rolling dirt, launch off tabletops, doubles and big triples, spin the bike in the air to land on the downslope and keep your speed — and race up to 6 friends online as ghosts. Pick from six riders and eight bike colors.
 
 Everything (art, sound, names) is original and drawn or synthesized in code. There are no image or sound files.
 
@@ -47,7 +47,7 @@ That address is your game. Bookmark it and share it.
 Upload the changed file again the same way (**Add file → Upload files**). GitHub replaces the old one. The site updates within a minute or two — refresh your browser (on a phone you may need to close and reopen the tab).
 
 ### Just want to try it on your own computer first?
-Double-click `index.html` to open it in your browser. Solo Practice, the Garage, and the Track Editor all work this way. Online play also needs an internet connection.
+Double-click `index.html` to open it in your browser. Solo Race, the Garage, and the Track Editor all work this way. Online play also needs an internet connection.
 
 ---
 
@@ -59,13 +59,14 @@ Double-click `index.html` to open it in your browser. Solo Practice, the Garage,
    The link looks like `https://doubleode.github.io/motomotto/?room=KZQP`.
 3. **Friends** open the link (or open the game, click **Join Online Race**, and type the code), then click **Join**.
    They can press **Change rider** first to pick a name, bike color, and rider.
-4. In the lobby, each friend clicks **Ready**. The host can pick the track and laps, and add computer riders (CPU) to fill the grid.
+4. In the lobby, each friend clicks **Ready**. The host picks the track and can add computer riders (CPU) to fill the grid.
 5. When everyone shows **READY**, the host clicks **Start Race**.
 6. After the race, the host clicks **Back to Lobby** to race again.
 
 Good to know:
 - Up to **6 riders** per race (people + CPU riders).
-- **The host's game runs the race.** The host should keep the game open and on screen until the race ends. If the host leaves, the room closes.
+- **Everyone rides their own bike on their own device**, so the controls feel instant no matter the connection. Other riders appear as **ghosts** — you ride right through each other, like racing a time trial side by side.
+- **The host runs the room** (the lobby, the computer riders, and the finishing order). The host should keep the game open until the race ends. If the host leaves, the room closes.
 - If a friend leaves mid-race, the race keeps going without them.
 - Someone who joins while a race is running watches it, then joins the next one.
 - Friends can open the Garage from the lobby and switch riders or colors — everyone sees the change.
@@ -81,26 +82,27 @@ Good to know:
 
 | Action | Keyboard | Phone (hold sideways) |
 |---|---|---|
-| Throttle | **Z** (or Space) | **GAS** (right side) |
+| Throttle | **Z**, Space, or **↑** | **GAS** (right side) |
 | Turbo | **X** | **TURBO** (right side) |
-| Change lane up / down | **↑ / ↓** (works in the air too) | ▲ / ▼ (left side) |
-| Lean back (nose up, float further) | **←** | ◀ (left side) |
-| Lean forward (nose down, drop sooner) | **→** | ▶ (left side) |
+| Brake | **↓** | **BRAKE** (right side) |
+| Lean back | **←** (or A) | **BACK** (left side) |
+| Lean forward | **→** (or D) | **FWD** (left side) |
 | Pause / menu | **Esc** | **II** button |
 
 On phones the game asks to go fullscreen when a race starts. Turn the phone sideways.
 
-## How to race
+## How to ride
 
-- **Turbo** is faster but heats your engine. If the **TEMP** gauge fills up, you stall for 3 seconds. Ride over a **blue cooling strip** to reset it to zero.
-- **Jumps:** you have lots of control in the air.
-  - **Lean back** tips the nose up *and* lets you float further.
-  - **Lean forward** tips the nose down *and* brings you down sooner — handy for landing on a downslope instead of overshooting.
-  - You can even **change lanes in mid-air** to line up a landing or dodge a barrier.
-  Land with your bike matching the slope of the ground for a **PERFECT** landing and a speed boost. Land badly and you crash.
-- On the ground, holding **lean back** pops a wheelie, which tips your nose up for the next jump.
-- **Mud** slows you down. **Hay bales** and **barriers** knock you off — switch lanes, or jump over them.
-- Running into another rider's **back wheel** from behind makes *you* crash.
+Races go from the start gate to the finish line. The whole game is about **flow** — keeping your speed through the dirt.
+
+- **Gravity matters.** Rolling downhill speeds you up; climbing slows you down.
+- **Landings are everything.** In the air, lean to spin the bike. Land with your wheels lined up with the slope — ideally on the *downside* of a jump — and you keep your speed. A lined-up landing on a downslope is a **PERFECT** and gives you a boost (chain them for a combo). Land flat and you lose speed. Land way off and you crash.
+- **Pop and scrub.** Lean **back** as you leave a jump to pop higher. Lean **forward** at the lip to stay low and fast.
+- **Rollers and whoops.** Hit them neutral and they'll buck you into the air. Lean **forward** to soak them up and stay glued to the ground.
+- **Wheelies.** Lean back on the ground with the gas on.
+- **Flips!** Spin a full backflip or frontflip and land it to get a speed boost — and it cools your engine completely.
+- **Turbo** is faster but heats your engine. If the **TEMP** gauge fills up, you stall for 3 seconds. Ride over a **blue cooling strip** to reset it. Watch out: too much speed can make you overshoot a landing onto the flat.
+- **Mud** slows you down.
 - When you crash, your rider tumbles, runs back to the bike, and hops on after about 2 seconds.
 
 ## Riders
@@ -111,17 +113,15 @@ Open **Garage** from the title screen to set your name, pick a bike color, and c
 
 ## Tracks and the editor
 
-Three built-in tracks: **Meadow Loop** (easy), **Dusty Canyon** (medium), **Thunder Gulch** (hard).
+Three built-in tracks: **Meadow Run** (easy, about 30 seconds), **Canyon Rush** (medium, about 45), **Thunder Ridge** (hard, about 55).
 
-**Track Editor:**
-- Pick a tool at the top (or press keys **1–9**), then click or tap the track.
-  - Ramps (Bump, Medium, Big Jump, Double) cover all 4 lanes.
-  - Mud, Cooling, Hay, and Barrier go in one lane — drag to paint several tiles.
-  - Eraser removes items, or a ramp if you click on it.
-- Scroll with the slider at the bottom, the arrow keys, your mouse wheel, or by tapping the mini-map.
-- The red-tinted tiles at the start and end stay clear for the starting grid.
-- **Test Ride** tries your track solo (1 lap). **Save** keeps it — it then shows up in Solo Practice and in the host's track list for online races. Friends don't need a copy; the host's game sends it to them when the race starts.
-- **Share** gives you a code you can text to a friend; they paste it in their editor's Share box and press **Import**.
+**Track Editor** — tracks are built from pieces, like snapping blocks together:
+- Tap a piece on the toolbar to add it **after the highlighted piece**: Flat, Rollers, Whoops, Tabletop, Double, Big Triple, Step-Up, Step-Down, Big Roller, Hill Up, Hill Down, Mud, Cooler.
+- Tap a piece on the track to highlight it. **&lt; / &gt;** move it earlier or later, **Remove** deletes it, **Undo** takes back your last change.
+- Scroll by dragging the track, with the arrow keys, your mouse wheel, or by tapping the mini-map at the bottom.
+- **Test Ride** rides the whole track. **Ride from here** starts you just before the highlighted piece — handy for practicing one jump.
+- **Save** keeps it — it then shows up in Solo Race and in the host's track list for online races. Friends don't need a copy; the host's game sends it to them when the race starts.
+- **Share** gives you a short code you can text to a friend; they paste it in their editor's Share box and press **Import**.
 - **Load…** can also copy a built-in track so you can remix it.
 
 Saved tracks and your rider live in your browser's storage. Clearing your browser data erases them, so use **Share** to keep a backup code of tracks you love.
@@ -132,15 +132,15 @@ Saved tracks and your rider live in your browser's storage. Clearing your browse
 
 | File | What it does |
 |---|---|
-| `index.html` | The page: menus, lobby, wardrobe, editor buttons, touch controls, and styles. |
-| `game.js` | The game engine: physics, jumps, heat, crashes, computer riders, drawing, sound, HUD, and the main loop. |
+| `index.html` | The page: menus, lobby, Garage, editor buttons, touch controls, and styles. |
+| `game.js` | The game engine: bike physics, jumps, landings, heat, crashes, computer riders, ghosts, drawing, sound, HUD, and the main loop. |
 | `net.js` | Online multiplayer: hosting, joining, the lobby, and keeping everyone's race in sync. |
 | `art.js` | The pixel-art helper, the bike and rider sprites, the six riders, and the Garage screen. |
-| `tracks.js` | Ramp shapes, the three built-in tracks, and the track editor. |
+| `tracks.js` | Track pieces, the three built-in tracks, turning pieces into terrain, and the track editor. |
 
 ### For tinkerers
-- Physics numbers (speed, gravity, air control, heat rate, landing tolerance) are in the `PHYS` table near the top of `game.js`. Ramp heights are in `RAMPS` in `tracks.js`.
-- Built-in tracks are listed in `BUILTIN_TRACKS` in `tracks.js` — each line is a ramp or item at a tile position.
+- Physics numbers (speed, gravity, spin speed, landing tolerance, heat rate) are in the `PHYS` table near the top of `game.js`. `crashTol` makes landings more or less forgiving.
+- Jump shapes are in `PIECES` in `tracks.js` — each piece is a few segments like `kick(84, 34)` (a jump face 84 pixels long and 34 tall). Built-in tracks in `BUILTIN_TRACKS` are just lists of piece names.
 - Bikes and riders are drawn as rows of letters in `art.js` (`BIKE_ROWS`, `RIDER_ROWS`). Each letter is a color; `.` is see-through; the black outline is added automatically. New riders go in the `RIDERS` list, and helmet designs in `HELMETS`.
 - Testing online play with your own signaling server: run a PeerJS server and add `?peer=localhost:9000` to the address.
 

@@ -45,23 +45,26 @@ const Pix = {
     const ch = (v) => Math.max(0, Math.min(255, Math.round(v * f)));
     return '#' + ((1 << 24) | (ch(n >> 16) << 16) | (ch((n >> 8) & 255) << 8) | ch(n & 255)).toString(16).slice(1);
   },
-  // Lay non-'.' characters of `over` on top of `base` (same row layout).
-  overlay(base, over, row0 = 0) {
-    const out = base.slice();
-    over.forEach((o, j) => {
-      const r = out[row0 + j].split('');
+  // Lay non-'.' characters of `over` on top of `base`.
+  overlay(base, over) {
+    return base.map((row, j) => {
+      const o = over[j]; if (!o) return row;
+      const r = row.split('');
       for (let i = 0; i < o.length; i++) if (o[i] !== '.' && r[i] && r[i] !== '.') r[i] = o[i];
-      out[row0 + j] = r.join('');
+      return r.join('');
     });
-    return out;
+  },
+  // Slide a row sideways by k pixels, keeping its width.
+  shift(row, k) {
+    if (!k) return row;
+    return k > 0 ? '.'.repeat(k) + row.slice(0, row.length - k) : row.slice(-k) + '.'.repeat(-k);
   },
 };
 
 // ---------------------------------------------------------------------
-// The bike. Grid is 36 wide. Wheels (12x12):
-// rear at cols 0-11, front at cols 24-35. X = bike colour, x = darker,
-// Z = highlight. The pivot used for tilting is col 18, row 14.
-// Wheels sit at rows 10-21, so the bike stands tall on its suspension.
+// The bike. Grid is 36 wide. X = bike colour, x = darker, Z = highlight.
+// Wheels are 12x12; their centres sit 12px either side of the middle,
+// and the wheel bottoms are BIKE.contact pixels below the sprite origin.
 // ---------------------------------------------------------------------
 const BIKE_ROWS = [
   '..........................kkk.......',
@@ -87,12 +90,12 @@ const WHEEL_ROWS = [
   ['...kkkkkk...', '.kkkkkkkkkk.', '.kkLLLLLLkk.', 'kkLn....nLkk', 'kkL.n..n.Lkk', 'kkL..ll..Lkk',
    'kkL..ll..Lkk', 'kkL.n..n.Lkk', 'kkLn....nLkk', '.kkLLLLLLkk.', '.kkkkkkkkkk.', '...kkkkkk...'],
 ];
-const BIKE = { ox: -18, oy: -14, wheelY: 10, rearX: 0, frontX: 24, contact: 8 };
+const BIKE = { ox: -18, oy: -14, wheelY: 10, rearX: 0, frontX: 24, contact: 8, half: 12 };
 
 // The rider, standing on the pegs in attack position. Same 36-wide grid;
 // row 0 of this sprite sits at bike row -13. Letters: H helmet, h helmet
-// design, c goggles, J jersey, j jersey stripe, A pants, a pants stripe,
-// F gloves, Q boots.
+// design, i design accent, c goggles, J jersey, j jersey stripe,
+// A pants, a pants stripe, F gloves, Q boots.
 const RIDER_OY = -13;
 const RIDER_ROWS = [
   '......................HHHH..........',
@@ -122,7 +125,7 @@ const RIDER_ROWS = [
   '.............QQQQQQ.................',
   '.............QQQQQQQ................',
 ];
-// Helmet designs, laid over rows 0-7 of the rider.
+// Helmet designs, laid over the top rows of the rider.
 const HELMETS = {
   stripe: ['......................hhhh..........', '....................hhhhhhh.........', '...................hhhhhhhh.........'],
   flame: ['', '', '', '..................h.................', '..................hhi...............', '..................hhhhi.............', '...................hhhhhhi..........', '.....................hhhhhhh........'],
@@ -130,6 +133,10 @@ const HELMETS = {
   checker: ['......................h.h...........', '....................h.h.h.h.........', '...................h.h.h.h.h........', '..................h.h.h.h...........', '...................h.h.h............', '..................h.h.h.h.h.........', '...................h.h.h.h.h........', '.....................h.h.h.h........'],
   star: ['', '', '......................h.............', '.....................hhh............', '...................hhhhhhh..........', '....................hhhhh...........', '....................hh.hh...........'],
 };
+// Leaning: the upper body slides back or forward over the bike.
+function leanRows(rows, d) {
+  return rows.map((r, j) => Pix.shift(r, j <= 10 ? d * 2 : j <= 15 ? d : 0));
+}
 // Small sprites for when the rider is off the bike.
 const RUN_TOP = ['....HHHH......', '..HHHHHHhh....', '.HHHHHHHkccc..', '.HHHHHHHkccck.', '.HHHHHHHHHh...', '..HHHHHHHHH...',
   '....JJJJ......', '...JJJJJJ.....', '..JJjJJJJF....', '.FJJjJJJ......', '...JJJJJ......'];
@@ -140,7 +147,6 @@ const RUN_ROWS = [
 const TUMBLE_ROWS = ['....HHHHH.......', '..HHHHHHHHh.....', '.HHHHHHHHkcc....', '.HHHHHHHHkccc...', '..HHHHHHHHH.....',
   '...JJJJJJJJJF...', '..JJJjjJJJJJF...', '.AAJJjjJJJJ.....', 'AAAAJJJJJ.......', 'AAAAAAAA........', '.QQAAAAAAQ......',
   'QQQ..AAAAQQ.....', 'QQ....QQQQ......'];
-const HEAD_ROWS = RUN_TOP.slice(0, 6);
 
 // The six riders. '@' means "use the bike colour".
 const RIDERS = [
@@ -162,32 +168,31 @@ function bikeArt(colorIdx, riderId) {
   const col = (COLORS[colorIdx] || COLORS[0]).c, R = riderDef(riderId);
   const map = { X: col, x: Pix.shade(col, 0.62), Z: Pix.shade(col, 1.35) };
   for (const k of ['H', 'h', 'i', 'J', 'j', 'A', 'a', 'F', 'Q']) map[k] = R[k] === '@' ? col : R[k];
-  const helmet = (HELMETS[R.helmet] || []).filter((r) => r !== undefined);
-  const riderRows = Pix.overlay(RIDER_ROWS, helmet.map((r) => r || ''));
+  const riderRows = Pix.overlay(RIDER_ROWS, HELMETS[R.helmet] || []);
   return (ArtCache[key] = {
     body: Pix.build(BIKE_ROWS, map),
     wheel: WHEEL_ROWS.map((w) => Pix.build(w, null, false)),
-    rider: Pix.build(riderRows, map),
+    rider: [-1, 0, 1].map((d) => Pix.build(leanRows(riderRows, d), map)),   // back, centre, forward
     run: RUN_ROWS.map((r) => Pix.build(r, map)),
     tumble: Pix.build(TUMBLE_ROWS, map),
-    head: Pix.build(HEAD_ROWS, map),
   });
 }
-// Draw a whole bike + rider with its pivot at (0,0) in the current transform.
-// `sq` pushes the body down a pixel or two (suspension squash on landings).
-function drawBikeArt(c, art, wf, sq, withRider) {
-  const ox = BIKE.ox, oy = BIKE.oy;
+// Draw a bike + rider with the point between the wheel bottoms at (0,0)
+// in the current transform. `sq` pushes the body down (suspension), and
+// `lean` is -1 back / 0 / 1 forward.
+function drawBikeArt(c, art, wf, sq, withRider, lean) {
+  const ox = BIKE.ox, oy = BIKE.oy - BIKE.contact;
   c.drawImage(art.wheel[wf], ox + BIKE.rearX, oy + BIKE.wheelY);
   c.drawImage(art.wheel[wf], ox + BIKE.frontX, oy + BIKE.wheelY);
   c.drawImage(art.body, ox - 1, oy - 1 + sq);
-  if (withRider) c.drawImage(art.rider, ox - 1, oy + RIDER_OY - 1 + sq);
+  if (withRider) c.drawImage(art.rider[(lean | 0) + 1] || art.rider[1], ox - 1, oy + RIDER_OY - 1 + sq);
 }
 // A static picture of a bike + rider on its own canvas (menus, lobby).
 function bikePortrait(colorIdx, riderId) {
   const c = document.createElement('canvas'); c.width = 40; c.height = 38;
   const x = c.getContext('2d'); x.imageSmoothingEnabled = false;
-  x.translate(20, 29);   // pivot: wheels touch the bottom edge
-  drawBikeArt(x, bikeArt(colorIdx, riderId), 0, 0, true);
+  x.translate(20, 37);
+  drawBikeArt(x, bikeArt(colorIdx, riderId), 0, 0, true, 0);
   return c;
 }
 
@@ -204,7 +209,7 @@ const Garage = {
     });
     $('wr-name').addEventListener('input', (e) => { const v = e.target.value.replace(/[^\w .\-!?']/g, '').slice(0, 12); Profile.name = v.trim() || 'Rider'; saveProfile(); });
     $('wr-name').addEventListener('change', () => this.changed());
-    $('wr-random').onclick = () => { Profile.rider = RIDER_IDS[Math.floor(Math.random() * RIDER_IDS.length)]; Profile.color = Math.floor(Math.random() * COLORS.length); Sound.play('pop'); this.changed(); };
+    $('wr-random').onclick = () => { Profile.rider = pick(RIDER_IDS); Profile.color = Math.floor(Math.random() * COLORS.length); Sound.play('pop'); this.changed(); };
     $('wr-done').onclick = () => { Sound.play('click'); this.close(); };
   },
   open(returnTo) {
@@ -216,10 +221,10 @@ const Garage = {
   close() {
     Profile.name = (Profile.name || 'Rider').trim().slice(0, 12) || 'Rider';
     saveProfile();
-    if (typeof Net !== 'undefined' && Net.active && Net.sendProfile) Net.sendProfile();
+    if (Net.active) Net.sendProfile();
     App.go(this.returnTo || 'title');
   },
-  changed() { saveProfile(); this.render(); if (typeof Net !== 'undefined' && Net.active && Net.sendProfile) Net.sendProfile(); },
+  changed() { saveProfile(); this.render(); if (Net.active) Net.sendProfile(); },
   render() {
     $('wr-colors').querySelectorAll('.swatch').forEach((b, i) => b.classList.toggle('sel', i === Profile.color));
     const grid = $('wr-riders'); grid.innerHTML = '';
@@ -230,7 +235,7 @@ const Garage = {
       b.onclick = () => { Profile.rider = R.id; Sound.play('pop'); this.changed(); };
       grid.appendChild(b);
     }
-    if (typeof App !== 'undefined') App.refreshTitle();
+    App.refreshTitle();
   },
   preview(t) {
     if (App.screen !== 'wardrobe') { this.previewing = false; return; }
@@ -239,13 +244,13 @@ const Garage = {
     const c = $('wr-preview'), x = c.getContext('2d');
     x.imageSmoothingEnabled = false;
     x.clearRect(0, 0, c.width, c.height);
-    // a little hop every couple of seconds
+    // a little hop with a lean every couple of seconds
     const ph = (now % 2.4) / 2.4, hop = ph < 0.3 ? Math.sin((ph / 0.3) * Math.PI) * 9 : 0;
     const tilt = ph < 0.3 ? Math.sin((ph / 0.3) * Math.PI * 2) * 0.25 : 0;
     const sq = ph >= 0.3 && ph < 0.36 ? 1 : 0;
     x.fillStyle = '#b8743c'; x.fillRect(0, c.height - 8, c.width, 8);
-    x.save(); x.translate(c.width / 2, c.height - 8 - BIKE.contact - Math.round(hop)); x.rotate(-tilt);
-    drawBikeArt(x, bikeArt(Profile.color, Profile.rider), (now * 8 | 0) & 1, sq, true);
+    x.save(); x.translate(c.width / 2, c.height - 8 - Math.round(hop)); x.rotate(-tilt);
+    drawBikeArt(x, bikeArt(Profile.color, Profile.rider), (now * 8 | 0) & 1, sq, true, ph < 0.15 ? -1 : ph < 0.3 ? 1 : 0);
     x.restore();
   },
 };

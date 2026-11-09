@@ -1,30 +1,32 @@
 'use strict';
 /* =====================================================================
    Hat Trick Moto — net.js
-   Online multiplayer with PeerJS (WebRTC). One player hosts and runs the
-   real race; everyone else sends their buttons and draws what the host
-   reports, smoothed so it looks good.
+   Online multiplayer with PeerJS (WebRTC).
 
-   Messages (all JSON):
-     client -> host : hello, ready, profile, in (inputs), ping, bye
-     host -> client : welcome, full, lobby, start, s (snapshot), results, tolobby, bye
+   One player hosts: they run the lobby, the computer riders, and decide
+   the finishing order. Everyone rides their OWN bike on their own device
+   (so the controls feel instant) and sends where they are 20 times a
+   second. The host passes everyone's positions on to everyone else, and
+   other riders show up as ghosts you ride through — just like a time
+   trial against friends.
+
+   Messages (JSON):
+     client -> host : hello, ready, profile, st (my bike), ping, bye
+     host -> client : welcome, full, lobby, start, s (all bikes), left,
+                      results, tolobby, bye
    ===================================================================== */
 
-const PEER_PREFIX = 'hattrickmoto-v2-';   // bump when the message format changes so old copies can't join
+const PEER_PREFIX = 'hattrickmoto-v3-';   // bump when messages change so old copies can't join
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 const MAX_PLAYERS = 6;
-const SNAP_EVERY = 3;            // physics steps between snapshots (60/3 = 20 per second)
-const INTERP_DELAY = 0.1;        // seconds clients stay behind the host for smooth motion
-const STATE_CODES = ['ride', 'stall', 'crash'];
-const r1 = (v) => Math.round(v * 10) / 10, r2 = (v) => Math.round(v * 100) / 100;
+const SEND_EVERY = 3;                     // physics steps between updates (60/3 = 20 per second)
 
 const Net = {
   role: null, active: false, peer: null, code: '', myId: null,
-  conns: new Map(),           // host: player id -> DataConnection
-  conn: null,                 // client: connection to the host
-  lobby: { players: [], track: 'meadow', laps: 3, phase: 'lobby' },
-  inputs: new Map(), lastSeen: new Map(), nextId: 1,
-  stepCount: 0, sendT: 0, pingT: 0, hostSeen: 0, resultsSent: false, joining: false,
+  conns: new Map(),            // host: player id -> connection
+  conn: null,                  // client: connection to the host
+  lobby: { players: [], track: 'meadow', phase: 'lobby' },
+  lastSeen: new Map(), nextId: 1, stepCount: 0, pingT: 0, hostSeen: 0, resultsSent: false, joining: false,
 
   init() {
     $('join-btn').onclick = () => this.join($('join-code').value);
@@ -33,7 +35,7 @@ const Net = {
     $('join-wardrobe').onclick = () => App.go('wardrobe-from-join');
     $('lb-copy').onclick = () => this.copyLink();
     $('lb-leave').onclick = () => { this.leave(); App.go('title'); };
-    $('lb-hats').onclick = () => App.go('wardrobe-from-lobby');   // opens the Garage
+    $('lb-hats').onclick = () => App.go('wardrobe-from-lobby');
     $('lb-ready').onclick = () => this.toggleReady();
     $('lb-start').onclick = () => this.startRace();
     $('lb-addbot').onclick = () => this.addBot();
@@ -56,7 +58,7 @@ const Net = {
     return o;
   },
   shareLink() { return location.origin + location.pathname + '?room=' + this.code + (/[?&]peer=/.test(location.search) ? '&' + /peer=[^&]+/.exec(location.search)[0] : ''); },
-  me() { return { name: Profile.name, color: Profile.color, rider: Profile.rider }; },
+  me() { return { name: Profile.name, color: Profile.color, char: Profile.rider }; },
   send(conn, msg) { try { if (conn && conn.open) conn.send(msg); } catch (e) {} },
   broadcast(msg) { for (const c of this.conns.values()) this.send(c, msg); },
   setStatus(id, t) { const el = $(id); if (el) el.textContent = t; },
@@ -66,27 +68,25 @@ const Net = {
     if (typeof Peer === 'undefined') { toast('Online play needs an internet connection'); return; }
     this.leave(true);
     this.role = 'host'; this.active = true;
-    this.code = Array.from({ length: 4 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
-    this.lobby = { players: [{ id: 'H', ...this.me(), ready: true, host: true }], track: TrackStore.get(Settings.track) ? Settings.track : 'meadow', laps: Settings.laps, phase: 'lobby' };
-    this.nextId = 1; this.inputs.clear(); this.lastSeen.clear(); this.conns.clear();
+    this.code = Array.from({ length: 4 }, () => pick(CODE_CHARS)).join('');
+    this.lobby = { players: [{ id: 'H', ...this.me(), ready: true, host: true }], track: TrackStore.get(Settings.track) ? Settings.track : 'meadow', phase: 'lobby' };
+    this.nextId = 1; this.lastSeen.clear(); this.conns.clear();
     this.myId = 'H';
     App.go('lobby');
-    this.renderLobby();
     this.setStatus('lb-status', 'Opening room…');
     const peer = (this.peer = new Peer(PEER_PREFIX + this.code, this.peerOptions()));
     peer.on('open', () => { this.setStatus('lb-status', 'Room open! Share the code or link with friends.'); this.renderLobby(); });
-    peer.on('connection', (conn) => this.onConnection(conn));
+    peer.on('connection', (conn) => {
+      conn.on('data', (msg) => this.hostMsg(conn, msg));
+      conn.on('close', () => this.dropConn(conn));
+      conn.on('error', () => this.dropConn(conn));
+    });
     peer.on('disconnected', () => { if (this.peer === peer && !peer.destroyed) { this.setStatus('lb-status', 'Reconnecting to the matchmaking server…'); try { peer.reconnect(); } catch (e) {} } });
     peer.on('error', (err) => {
       if (this.peer !== peer) return;
       if (err.type === 'unavailable-id' && attempt < 5) { this.host(attempt + 1); return; }
       this.setStatus('lb-status', 'Network problem: ' + (err.type || err.message || err) + '. Try again in a moment.');
     });
-  },
-  onConnection(conn) {
-    conn.on('data', (msg) => this.hostMsg(conn, msg));
-    conn.on('close', () => this.dropConn(conn));
-    conn.on('error', () => this.dropConn(conn));
   },
   hostMsg(conn, m) {
     if (!m || typeof m !== 'object') return;
@@ -95,7 +95,6 @@ const Net = {
     switch (m.t) {
       case 'hello': {
         if (conn._pid) return;
-        let humans = this.lobby.players.filter((p) => !p.bot);
         if (this.lobby.players.length >= MAX_PLAYERS) {
           const bot = [...this.lobby.players].reverse().find((p) => p.bot);
           if (bot && this.lobby.phase === 'lobby') this.lobby.players = this.lobby.players.filter((p) => p !== bot);
@@ -103,12 +102,11 @@ const Net = {
         }
         const pid = 'p' + this.nextId++;
         conn._pid = pid; this.conns.set(pid, conn); this.lastSeen.set(pid, performance.now());
-        const p = { id: pid, name: cleanName(m.name), color: (m.color | 0) % COLORS.length, rider: cleanRider(m.rider), ready: false, spectate: this.lobby.phase === 'race' };
+        const p = { id: pid, name: cleanName(m.name), color: (m.color | 0) % COLORS.length, char: cleanRider(m.char), ready: false, spectate: this.lobby.phase === 'race' };
         this.lobby.players.push(p);
         this.send(conn, { t: 'welcome', id: pid, code: this.code });
         this.broadcastLobby();
-        toast(p.name + ' joined!');
-        Sound.play('pop');
+        toast(p.name + ' joined!'); Sound.play('pop');
         const R = App.race;
         if (this.lobby.phase === 'race' && R && R.mode === 'host') this.send(conn, this.startMsg(R, true));
         break;
@@ -116,23 +114,23 @@ const Net = {
       case 'ready': { const p = this.player(id); if (p) { p.ready = !!m.v; this.broadcastLobby(); } break; }
       case 'profile': {
         const p = this.player(id); if (!p) return;
-        p.name = cleanName(m.name); p.color = (m.color | 0) % COLORS.length; p.rider = cleanRider(m.rider);
+        p.name = cleanName(m.name); p.color = (m.color | 0) % COLORS.length; p.char = cleanRider(m.char);
         this.broadcastLobby(); break;
       }
-      case 'in': this.inputs.set(id, { bits: m.b | 0, up: m.u | 0, dn: m.d | 0 }); break;
+      case 'st': { const R = App.race; if (R && R.mode === 'host') { const g = R.ghosts.get(id); if (g) g.push(m.s); } break; }
       case 'bye': this.dropConn(conn); break;
     }
   },
   player(id) { return this.lobby.players.find((p) => p.id === id); },
   dropConn(conn) {
     const id = conn._pid; if (!id || !this.conns.has(id)) return;
-    this.conns.delete(id); this.inputs.delete(id); this.lastSeen.delete(id);
+    this.conns.delete(id); this.lastSeen.delete(id);
     try { conn.close(); } catch (e) {}
-    const p = this.player(id);
+    const p = this.player(id), name = p ? p.name : 'A rider';
     this.lobby.players = this.lobby.players.filter((x) => x.id !== id);
     const R = App.race;
-    if (R && R.mode === 'host' && R.bike(id)) { R.removeBike(id); R.ev('left', null, p ? p.name : 'A rider'); }
-    else if (p) toast(p.name + ' left');
+    if (R && R.mode === 'host' && R.meta.has(id)) { R.removePlayer(id); this.broadcast({ t: 'left', id, name }); }
+    toast(name + (R ? ' left the race' : ' left'));
     this.broadcastLobby();
   },
   addBot() {
@@ -146,8 +144,8 @@ const Net = {
   },
   lobbyMsg() {
     const t = TrackStore.get(this.lobby.track) || BUILTIN_TRACKS[0];
-    return { t: 'lobby', code: this.code, laps: this.lobby.laps, track: { id: t.id, name: t.name }, phase: this.lobby.phase,
-      players: this.lobby.players.map((p) => ({ id: p.id, name: p.name, color: p.color, rider: p.rider, ready: !!p.ready, bot: !!p.bot, host: !!p.host, spectate: !!p.spectate })) };
+    return { t: 'lobby', code: this.code, track: { id: t.id, name: t.name }, phase: this.lobby.phase,
+      players: this.lobby.players.map((p) => ({ id: p.id, name: p.name, color: p.color, char: p.char, ready: !!p.ready, bot: !!p.bot, host: !!p.host, spectate: !!p.spectate })) };
   },
   broadcastLobby() {
     if (this.role !== 'host') return;
@@ -159,32 +157,31 @@ const Net = {
     else if (this.role === 'client') this.send(this.conn, { t: 'profile', ...this.me() });
   },
   startMsg(R, spectate) {
-    return { t: 'start', track: R.src, laps: R.laps, spectate: !!spectate,
-      players: R.bikes.map((b) => ({ id: b.id, name: b.name, color: b.color, rider: b.char, bot: b.bot })) };
+    return { t: 'start', track: { id: R.src.id, name: R.src.name, pieces: R.src.pieces }, spectate: !!spectate, elapsed: spectate ? R.time : 0,
+      players: [...R.meta.values()].map((p) => ({ id: p.id, name: p.name, color: p.color, char: p.char, bot: p.bot })) };
   },
   startRace() {
     if (this.role !== 'host') return;
     const waiting = this.lobby.players.filter((p) => !p.bot && !p.host && !p.ready);
     if (waiting.length) { toast('Waiting for ' + waiting.map((p) => p.name).join(', ') + ' to be ready'); return; }
-    const src = TrackStore.get(this.lobby.track) || BUILTIN_TRACKS[0];
+    const src = sanitizeTrack(TrackStore.get(this.lobby.track) || BUILTIN_TRACKS[0]);
     this.lobby.players.forEach((p) => (p.spectate = false));
-    const players = this.lobby.players.map((p) => ({ id: p.id, name: p.name, color: p.color, rider: p.rider, bot: !!p.bot, skill: p.skill }));
-    const R = new Race({ mode: 'host', track: src, laps: this.lobby.laps, players, localId: 'H',
-      inputFor: (b) => (b.id === 'H' ? localInput() : this.inputs.get(b.id) || null) });
+    const players = this.lobby.players.map((p) => ({ id: p.id, name: p.name, color: p.color, char: p.char, bot: !!p.bot, skill: p.skill }));
+    const R = new Race({ mode: 'host', track: src, players, localId: 'H', inputFor: (b) => (b.id === 'H' ? localInput() : null) });
     R.onStep = () => this.hostStep(R);
-    this.lobby.phase = 'race'; this.resultsSent = false; this.stepCount = 0; this.inputs.clear();
+    this.lobby.phase = 'race'; this.resultsSent = false; this.stepCount = 0;
     this.broadcast(this.startMsg(R, false));
     this.broadcastLobby();
     App.startRace(R);
   },
   hostStep(R) {
     if (R !== App.race) return;
-    if (++this.stepCount % SNAP_EVERY === 0 || R.netEv.length) {
-      const m = { t: 's', hc: r2(performance.now() / 1000), ph: R.phase === 'countdown' ? 0 : R.phase === 'race' ? 1 : 2, cd: r2(R.cd), tm: r2(R.time), b: R.bikes.map(packBike) };
-      if (R.netEv.length) { m.ev = R.netEv; R.netEv = []; }
-      this.broadcast(m);
-    }
     if (R.phase === 'done' && !this.resultsSent) { this.resultsSent = true; this.broadcast({ t: 'results', results: R.results }); }
+    if (++this.stepCount % SEND_EVERY) return;
+    const all = [];
+    for (const b of R.sim) all.push([b.id, ...packBike(b)]);
+    for (const [id, g] of R.ghosts) if (g.raw) all.push([id, ...g.raw]);
+    this.broadcast({ t: 's', b: all });
   },
   toLobby() {
     if (this.role !== 'host') return;
@@ -210,7 +207,7 @@ const Net = {
     const timer = setTimeout(() => fail('Could not reach room ' + code + '. Check the code and that the host is still in the lobby.'), 15000);
     peer.on('open', () => {
       const conn = (this.conn = peer.connect(PEER_PREFIX + code, { serialization: 'json', reliable: true }));
-      conn.on('open', () => { clearTimeout(timer); this.hostSeen = performance.now(); this.send(conn, { t: 'hello', v: 1, ...this.me() }); });
+      conn.on('open', () => { clearTimeout(timer); this.hostSeen = performance.now(); this.send(conn, { t: 'hello', v: 3, ...this.me() }); });
       conn.on('data', (m) => { this.hostSeen = performance.now(); this.clientMsg(m); });
       conn.on('close', () => this.hostGone('The host closed the room.'));
       conn.on('error', () => this.hostGone('Lost connection to the host.'));
@@ -223,21 +220,45 @@ const Net = {
   },
   clientMsg(m) {
     if (!m || typeof m !== 'object') return;
+    const R = App.race && App.race.mode === 'client' ? App.race : null;
     switch (m.t) {
       case 'welcome': this.myId = m.id; this.joining = false; App.go('lobby'); this.setStatus('lb-status', 'Joined! Press Ready when you are set.'); Sound.play('pop'); break;
       case 'full': this.joining = false; this.setStatus('join-status', 'That room is full (6 riders max).'); this.leave(true); break;
-      case 'lobby': this.lobby = { players: m.players || [], track: m.track && m.track.id, trackName: m.track && m.track.name, laps: m.laps, phase: m.phase }; this.renderLobby(m); break;
+      case 'lobby':
+        this.lobby = { players: Array.isArray(m.players) ? m.players : [], track: m.track && m.track.id, trackName: m.track && String(m.track.name), phase: m.phase };
+        this.renderLobby(m); break;
       case 'start': {
         const src = sanitizeTrack(m.track); if (!src) return;
-        App.startRace(new ClientRace({ track: src, laps: m.laps | 0 || 3, players: m.players || [], localId: m.spectate ? null : this.myId }));
+        const players = (Array.isArray(m.players) ? m.players : []).slice(0, MAX_PLAYERS)
+          .map((p) => ({ id: String(p.id), name: cleanName(p.name), color: (p.color | 0) % COLORS.length, char: cleanRider(p.char), bot: !!p.bot }));
+        const NR = new Race({ mode: 'client', track: src, players, localId: m.spectate ? null : this.myId, inputFor: () => localInput(), elapsed: m.spectate ? num(m.elapsed) : 0 });
+        NR.onStep = () => this.clientStep(NR);
+        this.stepCount = 0;
+        App.startRace(NR);
         if (m.spectate) toast('Race in progress — watching until the next one!', 3.5);
         break;
       }
-      case 's': if (App.race && App.race.mode === 'client') App.race.pushSnap(m); break;
-      case 'results': if (App.race && App.race.mode === 'client') { App.race.results = m.results; App.race.phase = 'done'; App.raceDone(App.race); } break;
+      case 's':
+        if (R && Array.isArray(m.b)) for (const e of m.b) {
+          if (!Array.isArray(e) || e[0] === this.myId) continue;
+          const g = R.ghosts.get(e[0]); if (g) g.push(e.slice(1));
+        }
+        break;
+      case 'left': if (R) R.removePlayer(m.id); toast(cleanName(m.name) + ' left the race'); break;
+      case 'results':
+        if (R && Array.isArray(m.results)) {
+          R.results = m.results.slice(0, MAX_PLAYERS).map((r, i) => ({ id: r.id, name: cleanName(r.name), color: (r.color | 0) % COLORS.length, pos: i + 1, time: typeof r.time === 'number' ? r.time : null, bot: !!r.bot }));
+          R.phase = 'done'; App.raceDone(R);
+        }
+        break;
       case 'tolobby': App.race = null; App.go('lobby'); break;
       case 'bye': this.hostGone('The host closed the room.'); break;
     }
+  },
+  clientStep(R) {
+    if (R !== App.race || ++this.stepCount % SEND_EVERY) return;
+    const b = R.bike(this.myId);
+    if (b) this.send(this.conn, { t: 'st', s: packBike(b) });
   },
   hostGone(msg) {
     if (this.role !== 'client') return;
@@ -256,27 +277,22 @@ const Net = {
   tick(dt) {
     if (!this.active) return;
     const now = performance.now();
-    if (this.role === 'client' && this.conn && this.conn.open) {
-      this.sendT -= dt; this.pingT -= dt;
-      if (App.scene === 'race' && App.race && App.race.mode === 'client' && this.sendT <= 0) {
-        this.sendT = 1 / 30; const i = localInput(); this.send(this.conn, { t: 'in', b: i.bits, u: i.up, d: i.dn });
-      } else if (this.pingT <= 0) { this.pingT = 2; this.send(this.conn, { t: 'ping' }); }
-      if (now - this.hostSeen > 9000) this.hostGone('Lost connection to the host.');
-    }
-    if (this.role === 'host') {
-      this.pingT -= dt;
-      if (this.pingT <= 0) {
-        this.pingT = 2;
+    this.pingT -= dt;
+    if (this.pingT <= 0) {
+      this.pingT = 2;
+      if (this.role === 'client') this.send(this.conn, { t: 'ping' });
+      if (this.role === 'host') {
         if (App.scene !== 'race') this.broadcast({ t: 'ping' });
         for (const [id, t] of this.lastSeen) if (now - t > 12000) { const c = this.conns.get(id); if (c) this.dropConn(c); }
       }
     }
+    if (this.role === 'client' && this.conn && this.conn.open && now - this.hostSeen > 9000) this.hostGone('Lost connection to the host.');
   },
   leave(silent) {
     if (this.role === 'host') this.broadcast({ t: 'bye' });
     else if (this.role === 'client') this.send(this.conn, { t: 'bye' });
     const peer = this.peer;
-    this.peer = null; this.conn = null; this.conns.clear(); this.inputs.clear(); this.lastSeen.clear();
+    this.peer = null; this.conn = null; this.conns.clear(); this.lastSeen.clear();
     this.role = null; this.active = false; this.myId = null; this.joining = false;
     if (peer) setTimeout(() => { try { peer.destroy(); } catch (e) {} }, 200);
     if (!silent) toast('Left the room');
@@ -300,32 +316,24 @@ const Net = {
     $('lb-link').textContent = this.code ? this.shareLink() : '';
     $('lb-hostctl').style.display = host ? '' : 'none';
     const tName = host ? (TrackStore.get(L.track) || BUILTIN_TRACKS[0]).name : L.trackName || L.track;
-    $('lb-settings').textContent = 'Track: ' + tName + ' · ' + L.laps + ' laps' + (L.phase === 'race' ? ' · race in progress' : '');
+    $('lb-settings').textContent = 'Track: ' + tName + (L.phase === 'race' ? ' · race in progress' : '');
     if (host) {
-      const sel = $('lb-track');
-      const opts = TrackStore.all();
-      if (sel.options.length !== opts.length || [...sel.options].some((o, i) => o.value !== opts[i].id)) {
+      const sel = $('lb-track'), opts = TrackStore.all();
+      if (sel.options.length !== opts.length || [...sel.options].some((o, i) => o.value !== opts[i].id))
         sel.innerHTML = opts.map((t) => '<option value="' + esc(t.id) + '">' + esc(t.name) + (t.diff ? '' : ' (custom)') + '</option>').join('');
-      }
       sel.value = L.track;
-      const laps = $('lb-laps'); laps.innerHTML = '';
-      for (const n of [2, 3]) {
-        const b = document.createElement('button'); b.className = 'mini'; b.textContent = n + ' laps'; b.classList.toggle('sel', L.laps === n);
-        b.onclick = () => { L.laps = n; Settings.laps = n; saveSettings(); this.broadcastLobby(); }; laps.appendChild(b);
-      }
       $('lb-addbot').disabled = L.players.length >= MAX_PLAYERS;
       $('lb-rmbot').disabled = !L.players.some((p) => p.bot);
     }
     const list = $('lb-players'); list.innerHTML = '';
     for (const p of L.players) {
       const row = document.createElement('div'); row.className = 'pl';
-      const dot = document.createElement('span'); dot.className = 'dot'; dot.style.background = (COLORS[p.color] || COLORS[0]).c; row.appendChild(dot);
-      const nm = document.createElement('span'); nm.className = 'name'; nm.textContent = p.name + (p.id === this.myId ? ' (you)' : ''); row.appendChild(nm);
-      const pic = bikePortrait((p.color | 0) % COLORS.length, cleanRider(p.rider)); pic.style.height = '38px'; pic.style.width = '40px'; row.appendChild(pic);
+      const pic = bikePortrait((p.color | 0) % COLORS.length, cleanRider(p.char)); pic.style.height = '38px'; pic.style.width = '40px'; row.appendChild(pic);
+      const nm = document.createElement('span'); nm.className = 'name'; nm.textContent = cleanName(p.name) + (p.id === this.myId ? ' (you)' : ''); row.appendChild(nm);
       const tag = document.createElement('span'); tag.className = 'tagr';
       if (p.host) { tag.textContent = 'HOST'; tag.classList.add('ready'); }
-      else if (p.bot) { tag.textContent = 'CPU'; }
-      else if (p.spectate) { tag.textContent = 'WATCHING'; }
+      else if (p.bot) tag.textContent = 'CPU';
+      else if (p.spectate) tag.textContent = 'WATCHING';
       else { tag.textContent = p.ready ? 'READY' : 'NOT READY'; tag.classList.toggle('ready', !!p.ready); }
       row.appendChild(tag);
       list.appendChild(row);
@@ -345,73 +353,3 @@ const Net = {
 
 function cleanRider(r) { return RIDER_IDS.includes(r) ? r : RIDER_IDS[0]; }
 function cleanName(n) { const s = String(n || '').replace(/[^\w .\-!?']/g, '').trim().slice(0, 12); return s || 'Rider'; }
-
-// Bike state squeezed into a small array for snapshots.
-function packBike(b) {
-  const r = b.rider, crash = b.state === 'crash';
-  return [b.id, r1(b.dist), r2(b.lp), r1(b.y), r2(b.ang), Math.round(b.v), Math.round(b.heat), STATE_CODES.indexOf(b.state),
-    b.inv > 0 ? 1 : 0, b.finished ? b.place : 0, r2(b.finishTime), crash ? r1(r.x - b.dist) : 0, crash ? r1(r.h) : 0,
-    crash ? r2(r.rot) : 0, crash ? r.ph : 0, r.flip ? 1 : 0, b.turbo ? 1 : 0, b.air ? 1 : 0];
-}
-function unpackBike(a) {
-  return { id: a[0], dist: a[1], lp: a[2], y: a[3], ang: a[4], v: a[5], heat: a[6], state: STATE_CODES[a[7]] || 'ride', inv: a[8] ? 1 : 0,
-    finished: a[9] > 0, place: a[9], finishTime: a[10], rider: { x: a[1] + a[11], h: a[12], rot: a[13], ph: a[14], flip: a[15] }, turbo: !!a[16], air: !!a[17] };
-}
-
-// A race as seen by a joining player: no physics, just smoothed snapshots from the host.
-class ClientRace {
-  constructor(o) {
-    this.local = false; this.mode = 'client';
-    this.src = o.track; this.track = compileTrack(o.track); this.laps = o.laps; this.localId = o.localId;
-    this.meta = new Map(o.players.map((p) => [p.id, { name: cleanName(p.name), color: (p.color | 0) % COLORS.length, char: cleanRider(p.rider), bot: !!p.bot }]));
-    this.snaps = []; this.pending = []; this.phase = 'countdown'; this.cd = 0; this.time = 0; this.results = null;
-    this.off = null; this.last = [];
-  }
-  pushSnap(m) {
-    const recv = performance.now() / 1000;
-    const o = recv - m.hc;
-    this.off = this.off == null || o < this.off ? o : this.off + (o - this.off) * 0.02;   // track the fastest delivery
-    const bikes = new Map();
-    for (const a of m.b || []) { const b = unpackBike(a); const meta = this.meta.get(b.id); if (meta) bikes.set(b.id, Object.assign(b, meta)); }
-    this.snaps.push({ t: m.hc + this.off, recv, bikes, ph: m.ph, cd: m.cd, tm: m.tm });
-    if (this.snaps.length > 40) this.snaps.shift();
-    if (m.ev) for (const e of m.ev) this.pending.push(e);
-  }
-  bike(id) { const s = this.snaps[this.snaps.length - 1]; return s ? s.bikes.get(id) : null; }
-  update(dt) {
-    const s = this.snaps[this.snaps.length - 1];
-    if (s) {
-      if (this.phase !== 'done') this.phase = ['countdown', 'race', 'done'][s.ph];
-      this.cd = s.cd;
-      this.time = this.phase === 'race' ? Math.max(this.time + dt, s.tm) : s.tm;
-      if (this.time > s.tm + 0.3) this.time = s.tm + 0.3;
-    }
-    if (this.pending.length) { const evs = this.pending; this.pending = []; for (const ev of evs) handleEvent(ev, this, this.last); }
-  }
-  viewBikes() {
-    const S = this.snaps; if (!S.length) return [];
-    const now = performance.now() / 1000, rt = now - INTERP_DELAY;
-    let a = S[0], b = S[S.length - 1];
-    for (let i = S.length - 1; i > 0; i--) if (S[i - 1].t <= rt) { a = S[i - 1]; b = S[i]; break; }
-    const k = b.t > a.t ? clamp((rt - a.t) / (b.t - a.t), 0, 1.2) : 1;
-    const latest = S[S.length - 1];
-    const out = [];
-    for (const [id, nb] of latest.bikes) {
-      let v;
-      if (id === this.localId) {
-        // your own bike: newest data, nudged forward by speed so it feels responsive
-        const age = clamp(now - latest.t, 0, 0.15);
-        v = Object.assign({}, nb, { dist: nb.dist + (nb.state === 'crash' ? 0 : nb.v * age) });
-      } else {
-        const p = a.bikes.get(id), q = b.bikes.get(id);
-        if (p && q && Math.abs(q.dist - p.dist) < 80) {
-          v = Object.assign({}, q, { dist: lerp(p.dist, q.dist, k), lp: lerp(p.lp, q.lp, k), y: lerp(p.y, q.y, k), ang: lerp(p.ang, q.ang, k),
-            rider: { x: lerp(p.rider.x, q.rider.x, k), h: lerp(p.rider.h, q.rider.h, k), rot: lerp(p.rider.rot, q.rider.rot, k), ph: q.rider.ph, flip: q.rider.flip } });
-        } else v = Object.assign({}, nb);
-      }
-      out.push(v);
-    }
-    this.last = out;
-    return out;
-  }
-}
